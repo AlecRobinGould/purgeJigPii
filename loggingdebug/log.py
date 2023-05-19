@@ -1,14 +1,18 @@
 import logging
+import os
 from time import strftime
 
 class log():
 
     def __init__(self):    
         # set up logging to file - see previous section for more details
+        self.logpath = '/home/antlabpi/purgeJig/loggingdebug/logfiles/'
+        self.logfile = '{}.log'.format(strftime('%d-%m-%y'))
+        self.statefile = 'state.log'
         logging.basicConfig(level=logging.DEBUG,
                             format='%(asctime)s %(name)-12s %(levelname)-8s %(message)s',
                             datefmt='%d-%m-%y %H:%M',
-                            filename='/home/antlabpi/purgeJig/loggingdebug/{}.log'.format(strftime('%d-%m-%y')) ,
+                            filename=self.logpath+self.logfile ,
                             filemode='a')
         # define a Handler which writes INFO messages or higher to the sys.stderr
         console = logging.StreamHandler()
@@ -21,8 +25,14 @@ class log():
         logging.getLogger('').addHandler(console)
     
     def logger(self, logtype='debug', message='default'):
-
-        
+        """
+        Receivers parameters and creates logs in a log file.
+        :param logtype : Nature of the information to be logged
+        error is serious, warning requires attension and debug is general logs.
+        :type logtype : string, optional
+        :param message : Information to be logged.        
+        :type message : string, optional
+        """
         
         if logtype == 'error':
             logging.error(message)
@@ -37,16 +47,41 @@ class log():
         else:
             logging.warning('Logger has been used out of condition')
 
+    def readState(self):
+        """
+        Opens a file named state and checks file size
+        If the file size is 1kb or greater, the last line is copied to a variable,  
+        logged to a logfile and returned as a string
+        If there are no file contents, an empty string is return (only a string null)
+        """
+        with open(self.logpath + self.statefile, "rb") as file:
+            if os.path.getsize(self.logpath + self.statefile):
+                try:
+                    file.seek(-2, os.SEEK_END)
+                    while file.read(1) != b'\n':
+                        file.seek(-2, os.SEEK_CUR)
+                except OSError:
+                    file.seek(0)
+                lastLine = file.readline().decode()
+                self.logger('debug', 'Last state recoverd as {}'.format(lastLine))
+            else:
+                lastLine = ''
+                self.logger('debug', 'Last state cannot be recovered')
+        return lastLine
 
 # def main():
     # '''
     # Main program function
     # '''
     # DEBUG = log()
+    # if DEBUG.readState() != "":
+        # print("Something")
+    # else:
+        # print("Nothing")
     # DEBUG.logger('debug', 'This is a test')
     # DEBUG.logger('warning', 'This is a warning')
     # DEBUG.logger('info', 'This is info')
     # DEBUG.logger('error', 'This is an error')
-# 
+
 # if __name__ == "__main__":
     # main()

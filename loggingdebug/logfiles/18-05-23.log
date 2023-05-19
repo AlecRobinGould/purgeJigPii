@@ -1,0 +1,26 @@
+18-05-23 13:16 root         DEBUG    Purge constructor has run!
+18-05-23 13:21 root         DEBUG    Purge constructor has run!
+18-05-23 13:21 root         DEBUG    Purge constructor has run!
+18-05-23 13:22 root         DEBUG    Purge constructor has run!
+18-05-23 13:23 root         DEBUG    Purge constructor has run!
+18-05-23 13:24 root         DEBUG    Purge constructor has run!
+18-05-23 13:25 root         DEBUG    Purge constructor has run!
+18-05-23 13:26 root         DEBUG    Purge constructor has run!
+18-05-23 13:27 root         DEBUG    Purge constructor has run!
+18-05-23 13:32 root         DEBUG    Purge constructor has run!
+18-05-23 13:33 root         DEBUG    Purge constructor has run!
+18-05-23 13:33 root         DEBUG    Purge constructor has run!
+18-05-23 13:34 root         DEBUG    Purge constructor has run!
+18-05-23 13:47 root         DEBUG    Purge constructor has run!
+18-05-23 13:49 root         DEBUG    Purge constructor has run!
+18-05-23 13:50 root         DEBUG    Purge constructor has run!
+18-05-23 14:36 root         DEBUG    Last state captured as vacuum 
+18-05-23 14:55 root         DEBUG    Last state recoverd as 
+18-05-23 14:56 root         DEBUG    Last state recoverd as 
+18-05-23 15:06 root         DEBUG    Last state recoverd as 
+18-05-23 15:06 root         DEBUG    Last state recoverd as Something is here
+18-05-23 15:09 root         DEBUG    Last state recoverd as Something is here
+18-05-23 15:10 root         DEBUG    Last state cannot be recovered
+18-05-23 15:32 root         DEBUG    Last state cannot be recovered
+18-05-23 15:32 root         DEBUG    Last state recoverd as This is some text
+18-05-23 15:33 root         DEBUG    Last state recoverd as This is some text

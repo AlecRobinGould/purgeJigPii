@@ -1,10 +1,9 @@
 import RPi.GPIO as GPIO
-import time
 from loggingdebug import log
 
 class logicPins():
 
-    def __init__(self, state):
+    def __init__(self):
 
         """
         Class constructor - Initialise the GPIO as input or outputs
@@ -13,34 +12,32 @@ class logicPins():
         call (memory function, may not start from scratch)
         :type state: string, not optional
         """
-
-        self.state = state
-
         GPIO.setmode(GPIO.BCM)
 
         # Constants
         deBounce = 100   # time in milliseconds
 
         # Pin numbers
-        fillValve2 = 23
-        vacValve = 25
-        stat1Mon = 8
+        self.fillValve2 = 23
+        self.ventValve = 24
+        self.vacValve = 25
+        self.stat1Mon = 8
         nCycleButton = 7
-        stat2Mon = 1
-        enCharge = 20
-        enFan = 21
+        self.stat2Mon = 1
+        self.enCharge = 20
+        self.enFan = 21
 
         nStartButton = 4
-        enStepMotor = 27
-        fillValve1 = 22
+        self.enStepMotor = 27
+        self.fillValve1 = 22
         nStopButton = 5
         nResetButton = 6
-        enBattery = 19
-        enPump = 26
+        self.enBattery = 19
+        self.enPump = 26
 
         # Input pins
-        GPIO.setup(stat1Mon,GPIO.IN)
-        GPIO.setup(stat2Mon,GPIO.IN)
+        GPIO.setup(self.stat1Mon,GPIO.IN)
+        GPIO.setup(self.stat2Mon,GPIO.IN)
 
         GPIO.setup(nStartButton,GPIO.IN)
         GPIO.setup(nStopButton,GPIO.IN)
@@ -48,69 +45,101 @@ class logicPins():
         GPIO.setup(nCycleButton,GPIO.IN)
 
         # Output pins
-        GPIO.setup(fillValve2,GPIO.OUT)
-        GPIO.setup(vacValve,GPIO.OUT)
+        GPIO.setup(self.fillValve2,GPIO.OUT)
+        GPIO.setup(self.ventValve,GPIO.OUT)
+        GPIO.setup(self.vacValve,GPIO.OUT)
+        GPIO.setup(self.enCharge,GPIO.OUT)
+        GPIO.setup(self.enFan,GPIO.OUT)
 
-        GPIO.setup(enCharge,GPIO.OUT)
-        GPIO.setup(enFan,GPIO.OUT)
-        GPIO.setup(enStepMotor,GPIO.OUT)
-        GPIO.setup(fillValve1,GPIO.OUT)
-        GPIO.setup(enBattery,GPIO.OUT)
-        GPIO.setup(enPump,GPIO.OUT)
+        GPIO.setup(self.enStepMotor,GPIO.OUT)
+        GPIO.setup(self.fillValve1,GPIO.OUT)
+        GPIO.setup(self.enBattery,GPIO.OUT)
+        GPIO.setup(self.enPump,GPIO.OUT)
 
         # Variables
         self.cycleCount = 0
 
-        GPIO.add_event_detect(nCycleButton, GPIO.FALLING, self.cycleCallback, deBounce)
-        GPIO.add_event_detect(nStartButton, GPIO.FALLING, self.startCallback, deBounce)
-        GPIO.add_event_detect(nStopButton, GPIO.FALLING, self.stopCallback, deBounce)
-        GPIO.add_event_detect(nResetButton, GPIO.FALLING, self.resetCallback, deBounce)
+        # Flags
+        self.startFlag
+        self.stopFlag
+        self.resetFlag
+
+        GPIO.add_event_detect(nCycleButton, GPIO.FALLING, self._cycleCallback, deBounce)
+        GPIO.add_event_detect(nStartButton, GPIO.FALLING, self._startCallback, deBounce)
+        GPIO.add_event_detect(nStopButton, GPIO.FALLING, self._stopCallback, deBounce)
+        GPIO.add_event_detect(nResetButton, GPIO.FALLING, self._resetCallback, deBounce)
 
         # Object for logging to a file
-        # self.log = log()
+        self.DEBUG = log.log()
        
 
-    def cycleCallback(self, channel):
-
+    def _cycleCallback(self, channel):
+        # Increment the number of cycles to be performed
         self.cycleCount += 1
-        message = 'cycle count incremented to {}'.format(self.cycleCount)
 
-        DEBUG = log.log()
-        DEBUG.logger('debug', message)
+        # DEBUG = log.log()
+        self.DEBUG.logger('debug', 'cycle count incremented to {}'.format(self.cycleCount))
         
-    def startCallback(self):
-        startflag = 1
+    def _startCallback(self):
+        if self.startFlag:
+            self.startFlag = 0
+        else:
+            self.startFlag = 1
 
-    def stopCallback(self):
-        stopflag = 1
+    def _stopCallback(self):
 
-    def resetCallback(self):
-        resetflag = 1
+        if self.stopFlag:
+            self.stopFlag = 0
+        else:
+            self.stopFlag = 1
 
-    def statusMonitor():
-        stat1MonValue = GPIO.input(stat1Mon)
-        stat2MonValue = GPIO.input(stat2Mon)
+    def _resetCallback(self):
+        self.resetFlag = 1
+
+    def statusMonitor(self):
+        stat1MonValue = GPIO.input(self.stat1Mon)
+        stat2MonValue = GPIO.input(self.stat2Mon)
+
+        if stat1MonValue:
+            if stat2MonValue:
+                self.DEBUG.logger('debug', 'Battery is charged')
+                return 'Charged'
+            else:
+                self.DEBUG.logger('debug', 'Battery is charging')
+                return 'Charging'
+        else:
+            if stat2MonValue:
+                self.DEBUG.logger('warning', 'Over-voltage or over-temperature fault')
+                return 'Fault'
+            else:
+                self.DEBUG.logger('error', 'Over-current or charge timeout fault')
+                return 'Major fault'
     
-    def batteryState():
-        GPIO.output(enBattery, 1 )
+    def batteryStateSet():
+        GPIO.output(self.enBattery, 1 )
 
-
-class purgeModes():
-    def __init__(self):
-        """
-        Class constructor - Initialise functionality for creating rules of purge
-        :param : 
-        :type : 
-        """
-        
-'''
+         
 def main():
     
     # Main program function
-   
-    test = logicPins('testing')
-    test.cycleCallback(7)
+
+    # test = logicPins('testing')
+    # test.cycleCallback(7)
+    count = 0
+    
+    print("program has started")
+    test = purgeModes()
+    GPIO.cleanup()
+    print("Program has ended")
+    count += 1
+
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(19,GPIO.OUT)
+
+    GPIO.output(19, 1)
+
+    
+
 
 if __name__ == "__main__":
     main()
-'''
