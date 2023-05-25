@@ -36,8 +36,9 @@ class ADCDifferentialPi(object):
     Control the MCP3424 ADC on the ADC Differential Pi and Delta-Sigma Pi
     """
     # internal variables
-    __adc1_address = 0x68
+    __adc1_address = 0x6E
     __adc2_address = 0x69
+    
 
     __adc1_conf = 0x9C
     # __adc2_conf = 0x9C
@@ -182,19 +183,19 @@ class ADCDifferentialPi(object):
         """
         Returns the voltage from the selected ADC channel
 
-        :param channel: 1 to 8
+        :param channel: 1 to 4
         :type channel: int
         :return: voltage
         :rtype: float
         """
-        if channel < 1 or channel > 8:
+        if channel < 1 or channel > 4:
             raise ValueError('read_voltage: channel out of range (1 to 8 allowed)')
 
         raw = self.read_raw(channel)
 
         if self.__signbit:
-            voltage = (raw * (self.__lsb / self.__pga)) - (2.048 /
-                                                           (self.__pga * 2))
+            # voltage = (raw * (self.__lsb / self.__pga)) - (2.048 /(self.__pga * 2))
+            voltage = 0.00
         else:
             voltage = (raw * (self.__lsb / self.__pga))
         return float(voltage)
@@ -203,15 +204,15 @@ class ADCDifferentialPi(object):
         """
         Reads the raw value from the selected ADC channel
 
-        :param channel: 1 to 8
+        :param channel: 1 to 4
         :type channel: int
         :raises ValueError: read_raw: channel out of range
         :raises TimeoutError: read_raw: channel x conversion timed out
         :return: raw ADC output
         :rtype: int
         """
-        if channel < 1 or channel > 8:
-            raise ValueError('read_raw: channel out of range (1 to 8 allowed)')
+        if channel < 1 or channel > 4:
+            raise ValueError('read_raw: channel out of range (1 to 4 allowed)')
 
         high = 0
         low = 0

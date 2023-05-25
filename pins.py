@@ -1,7 +1,8 @@
 import RPi.GPIO as GPIO
 from loggingdebug import log
 
-class logicPins():
+
+class logicPins(log.log):
 
     def __init__(self):
 
@@ -12,9 +13,10 @@ class logicPins():
         call (memory function, may not start from scratch)
         :type state: string, not optional
         """
+        # super().__init__()
         GPIO.setmode(GPIO.BCM)
 
-        # Constants
+        # Constants... python does not like real constants - pls dont change this
         deBounce = 100   # time in milliseconds
 
         # Pin numbers
@@ -60,9 +62,9 @@ class logicPins():
         self.cycleCount = 0
 
         # Flags
-        self.startFlag
-        self.stopFlag
-        self.resetFlag
+        self.startFlag = 0
+        self.stopFlag = 0
+        self.resetFlag = 0
 
         GPIO.add_event_detect(nCycleButton, GPIO.FALLING, self._cycleCallback, deBounce)
         GPIO.add_event_detect(nStartButton, GPIO.FALLING, self._startCallback, deBounce)
@@ -70,15 +72,35 @@ class logicPins():
         GPIO.add_event_detect(nResetButton, GPIO.FALLING, self._resetCallback, deBounce)
 
         # Object for logging to a file
-        self.DEBUG = log.log()
-       
+        # This gets inherited from log.py with log class
+        # self.logger()
+        # self.DEBUG = log.log()
+
+    def setCallbacks(self):
+        GPIO.add_event_detect(nCycleButton, GPIO.FALLING, self._cycleCallback, deBounce)
+        GPIO.add_event_detect(nStartButton, GPIO.FALLING, self._startCallback, deBounce)
+        GPIO.add_event_detect(nStopButton, GPIO.FALLING, self._stopCallback, deBounce)
+        GPIO.add_event_detect(nResetButton, GPIO.FALLING, self._resetCallback, deBounce)
+
+    def removeCallBacks(self):
+
+        if self.startFlag:
+            GPIO.remove_event_detect(nCycleButton)
+            GPIO.remove_event_detect(nStartButton)
+        if self.stopFlag:
+            GPIO.remove_event_detect(nStopButton)
+        if self.resetFlag:
+            GPIO.remove_event_detect(nCycleButton)
+            GPIO.remove_event_detect(nStartButton)
+            GPIO.remove_event_detect(nStopButton)
+            GPIO.remove_event_detect(nResetButton)
 
     def _cycleCallback(self, channel):
         # Increment the number of cycles to be performed
         self.cycleCount += 1
 
         # DEBUG = log.log()
-        self.DEBUG.logger('debug', 'cycle count incremented to {}'.format(self.cycleCount))
+        self.logger('debug', 'cycle count incremented to {}'.format(self.cycleCount))
         
     def _startCallback(self):
         if self.startFlag:
@@ -96,29 +118,13 @@ class logicPins():
     def _resetCallback(self):
         self.resetFlag = 1
 
-    def statusMonitor(self):
-        stat1MonValue = GPIO.input(self.stat1Mon)
-        stat2MonValue = GPIO.input(self.stat2Mon)
+    def batteryStateSet(self, batteryEnable = 1, chargeEnable = 1):
 
-        if stat1MonValue:
-            if stat2MonValue:
-                self.DEBUG.logger('debug', 'Battery is charged')
-                return 'Charged'
-            else:
-                self.DEBUG.logger('debug', 'Battery is charging')
-                return 'Charging'
-        else:
-            if stat2MonValue:
-                self.DEBUG.logger('warning', 'Over-voltage or over-temperature fault')
-                return 'Fault'
-            else:
-                self.DEBUG.logger('error', 'Over-current or charge timeout fault')
-                return 'Major fault'
-    
-    def batteryStateSet():
-        GPIO.output(self.enBattery, 1 )
+        GPIO.output(self.enBattery, batteryEnable )
+        GPIO.output(self.enCharge, chargeEnable)
 
-         
+
+'''        
 def main():
     
     # Main program function
@@ -143,3 +149,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''

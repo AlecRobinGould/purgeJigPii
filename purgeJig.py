@@ -3,7 +3,7 @@ import time
 import RPi.GPIO as GPIO
 # from loggingdebug import log
 
-class purgeModes():
+class purgeModes(pins.log.log):
     def __init__(self, state):
         """
         Class constructor - Initialise functionality for creating rules of purge
@@ -15,6 +15,9 @@ class purgeModes():
         self.logic.DEBUG.logger('debug', 'Purge constructor has run!')
         GPIO.output(self.logic.enBattery, 1)
         self.__idle()
+        # This gets inherited from log.py/pins.py with log class
+        self.logger()
+        
         
     def __idle(self):
         """
@@ -105,11 +108,12 @@ class purgeModes():
         GPIO.output(self.logic.enStepMotor, 0)
         GPIO.output(self.logic.enFan, 0)
 
-class purge(self):
+class purge():
     
     def __init__():
-        
+        pass
     def runPurge(self):
+        pass
         # Check battery
         
         # Check sensors
