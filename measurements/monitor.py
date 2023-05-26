@@ -1,3 +1,11 @@
+#!/usr/bin/env python
+
+"""
+=====================================================
+
+Check "List of dependencies.txt" for required modules
+=====================================================
+"""
 import RPi.GPIO as GPIO
 import DifferentialADCPi
 try: 
@@ -16,9 +24,12 @@ except ImportError:
             "Failed to import library from parent folder")
 
 class measure(pins.logicPins):
+    """Class for taking measurements, including conversions"""
+    def __init__(self):
 
-    def __init__(self,):
-        super().__init__()
+        super().__init__() # This initialises the inherited class such that an instance does not
+                           # to be explicitly created, including the log class.
+
         self.SOCLookUp = [
             0.96637, 100,
             0.94336, 90,
@@ -50,14 +61,19 @@ class measure(pins.logicPins):
             0.051448, 481.6828844,      # 4.816829E+02
             0.050000, 1026.000000       # 1.026000E+03
         ]
+        # Initialise the ADC with default values
         try:
-            self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=18, bus=1)
-        except:
             self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=18, bus=1)
+        except:
+            self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=18, bus=1)
+            print("ADC I2C adress has bugged out to 0x6F again")
+
+        # Setting additional adc parameters
         self.adc.set_pga(1)
         self.adc.set_conversion_mode(0)
-        self.adc.set_bit_rate(18)
+        # self.adc.set_bit_rate(18)
 
+        """Create instance of the lcd class. WIll later be inherited where it needs to be"""
         self.display = displayLCD.lcd()
     
     def readVoltage(self, channelNo):
@@ -75,13 +91,12 @@ class measure(pins.logicPins):
                 if voltage < self.SOCLookUp[i] and voltage > self.SOCLookUp[i+2]:
                     return self.SOCLookUp[i+1]
     
-    def pressureConversion(self, voltage, type):
-
+    def pressureConversion(self, volt, type):
         try:
-            if type == "0=10bar":
-                return (voltage - 0.4)*6.25
+            if type == "0-10bar":
+                return (volt - 0.4)*6.25
             else:
-                return (voltage - 0.4)*21.5625
+                return (volt - 0.4)*21.5625
         except ValueError:
                 raise ValueError("Value does not correspond")
     
@@ -91,14 +106,11 @@ class measure(pins.logicPins):
         elif voltage < self.vacuumLookUp[38]:
             return self.vacuumLookUp[39]
         else:
-            for v in self.vacuumLookUp:
+            for v in range(len(self.vacuumLookUp)):
                 i=v*2
                 if voltage <= self.vacuumLookUp[i] and voltage >= self.vacuumLookUp[i+2]:
                     return self.vacuumLookUp[i+3] -((self.vacuumLookUp[i+3] - self.vacuumLookUp[i+1]) * ((voltage - self.vacuumLookUp[i+2]) / (self.vacuumLookUp[i] - self.vacuumLookUp[i+2])))
-                else:
-                    raise ValueError("There is an error in the vacuum measurement")         
-    
-
+                
     def statusMonitor(self):
         stat1MonValue = GPIO.input(self.stat1Mon)
         stat2MonValue = GPIO.input(self.stat2Mon)
@@ -118,17 +130,25 @@ class measure(pins.logicPins):
                 self.logger('error', 'Over-current or charge timeout fault')
                 return 'Major fault'
             
-
 def main():
     read = measure()
     read.batteryStateSet(1, 0)
     try:
         while True:
             for i in range(1,5):
-                x = round(read.readVoltage(i), 2)
-                # read.display.lcd_display_string("Time: %s" %time.strftime("%H:%M:%S"), 1)
+                # x = round(read.readVoltage(i), 2)
+                if i == 1:
+                    x = read.vacuumConversion(read.readVoltage(i))
+                elif i == 2:
+                    x = read.readVoltage(i)
+                elif i == 3:
+                    x = read.pressureConversion(read.readVoltage(i), "0-34bar")
+                elif i == 4:
+                    x = read.pressureConversion(read.readVoltage(i), "0-10bar")
+
                 if i != 2:
-                    read.display.lcd_display_string("ADC {}: ".format(i)+ str(x)+" V ",i)
+                    # read.display.lcd_display_string("ADC {}: ".format(i)+ str(x)+" V ",i)
+                    read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e}".format(x),i)
                 else:
                     read.display.lcd_display_string("Batt: "+str(read.stateOfCharge(x))+"% ",i)
     except KeyboardInterrupt:
