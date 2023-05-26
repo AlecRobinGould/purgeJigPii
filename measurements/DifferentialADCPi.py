@@ -3,7 +3,6 @@
 """
 ================================================
 
-
 Requires smbus2 or python smbus to be installed
 ================================================
 """
@@ -37,14 +36,14 @@ class ADCDifferentialPi(object):
     """
     # internal variables
     __adc1_address = 0x6E
-    __adc2_address = 0x69
+    # __adc2_address = 0x69
     
 
     __adc1_conf = 0x9C
     # __adc2_conf = 0x9C
 
     __adc1_channel = 0x01
-    __adc2_channel = 0x01
+    # __adc2_channel = 0x01
 
     __bitrate = 18  # current bitrate
     __conversionmode = 1  # Conversion Mode
@@ -176,7 +175,7 @@ class ADCDifferentialPi(object):
 
         self.__bus = self.__get_smbus(bus)
         self.__adc1_address = address
-        self.__adc2_address = address2
+        # self.__adc2_address = address2
         self.set_bit_rate(rate)
 
     def read_voltage(self, channel):
