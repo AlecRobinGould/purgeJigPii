@@ -7,6 +7,7 @@ Requires RPi to be installed
 ================================================
 """
 import RPi.GPIO as GPIO
+import os
 from loggingdebug import log
 
 class logicPins(log.log):
@@ -65,7 +66,7 @@ class logicPins(log.log):
         GPIO.setup(self.enPump,GPIO.OUT)
 
         # Variables
-        self.cycleCount = 1
+        self.cycleCount = 0
 
         # Flags
         self.startFlag = 0
@@ -107,30 +108,34 @@ class logicPins(log.log):
         """Internal method for incrementing a button press counter"""
         # Increment the number of cycles to be performed
         self.cycleCount += 1
+        print(self.cycleCount)
 
         # DEBUG = log.log()
         self.logger('debug', 'cycle count incremented to {}'.format(self.cycleCount))
         
-    def __startCallback(self):
+    def __startCallback(self, channel):
         """Internal method for starting purge"""
+        print("start button pressed")
         if self.startFlag:
             self.startFlag = 0
         else:
             self.startFlag = 1
+            self.removeCallBacks()       
 
-        self.removeCallBacks()
-
-    def __stopCallback(self):
+    def __stopCallback(self, channel):
+        print("stop button pressed")
 
         if self.stopFlag:
             self.stopFlag = 0
         else:
             self.stopFlag = 1
-        self.removeCallBacks()
-
-    def __resetCallback(self):
+            self.removeCallBacks()
+        
+    def __resetCallback(self, channel):
+        print("reset pressed")
         self.resetFlag = 1
         self.removeCallBacks()
+        os.system("sudo reboot now -h")
 
     def batteryStateSet(self, batteryEnable = 1, chargeEnable = 1):
 

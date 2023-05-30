@@ -65,8 +65,11 @@ class measure(pins.logicPins):
         try:
             self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=18, bus=1)
         except:
-            self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=18, bus=1)
-            print("ADC I2C adress has bugged out to 0x6F again")
+            try:
+                self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=18, bus=1)
+            except:
+                self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x68, rate=18, bus=1)
+            print("ADC I2C adress no valid")
 
         # Setting additional adc parameters
         self.adc.set_pga(1)
@@ -92,15 +95,35 @@ class measure(pins.logicPins):
                     return self.SOCLookUp[i+1]
     
     def pressureConversion(self, volt, type):
+        """
+        method for getting pressure from pressure sensors
+
+        :param volt: Voltage from the ADC
+        :type volt: float
+        :param type: Type of pressure sensor to convert (0-10bar) or (0-34bar)
+        :type type: string
+        :return: Pressure of the voltage channel, of a type
+        :rtype: float
+        :raises IOError: Value does not correspond
+        """
         try:
             if type == "0-10bar":
-                return (volt - 0.4)*6.25
+                # print("Volt10bar: {}\n".format(volt))
+                if volt >= 0.4:
+                    return (volt - 0.4012)*6.25 # 0.4012 calculated from resistor netowrk actual value
+                else:
+                    return 0.00
             else:
-                return (volt - 0.4)*21.5625
+                # print("Volt34bar: {}\n".format(volt))
+                if volt >= 0.4:
+                    return (volt - 0.4008)*21.54625
+                else:
+                    return 0.00
         except ValueError:
                 raise ValueError("Value does not correspond")
     
     def vacuumConversion(self, voltage):
+        # print("Voltage: {}".format(voltage))
         if voltage > self.vacuumLookUp[0]:
             return self.vacuumLookUp[1]
         elif voltage < self.vacuumLookUp[38]:
@@ -137,20 +160,20 @@ def main():
         while True:
             for i in range(1,5):
                 # x = round(read.readVoltage(i), 2)
+                # read.display.lcd_display_string("                    ",i)
                 if i == 1:
                     x = read.vacuumConversion(read.readVoltage(i))
+                    read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e}".format(x),i)
                 elif i == 2:
                     x = read.readVoltage(i)
+                    read.display.lcd_display_string("Batt: "+str(read.stateOfCharge(x))+"% ",i)
                 elif i == 3:
                     x = read.pressureConversion(read.readVoltage(i), "0-34bar")
+                    read.display.lcd_display_string("sensor {}: ".format(round(x,2)),i)
                 elif i == 4:
                     x = read.pressureConversion(read.readVoltage(i), "0-10bar")
-
-                if i != 2:
-                    # read.display.lcd_display_string("ADC {}: ".format(i)+ str(x)+" V ",i)
-                    read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e}".format(x),i)
-                else:
-                    read.display.lcd_display_string("Batt: "+str(read.stateOfCharge(x))+"% ",i)
+                    read.display.lcd_display_string("sensor {}: ".format(round(x,2)),i)
+                    
     except KeyboardInterrupt:
         print("\nExited measurements through keyboard interupt")
         GPIO.cleanup()
