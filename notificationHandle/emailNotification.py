@@ -2,6 +2,16 @@ import os
 import smtplib
 import sys
 from time import strftime
+try:
+    from loggingdebug import log
+except ImportError:
+    try:
+        import sys
+        sys.path.append('.')
+        from loggingdebug import log
+    except ImportError:
+        raise ImportError(
+            "Failed to import library from parent folder")
 
 from configparser import ConfigParser
 from email import encoders
@@ -13,17 +23,12 @@ from email.utils import formatdate
 class emailNotification(log.log):
 
     def __init__(self):
-        pass
-
-    def send_email_with_attachment(subject, body_text):
-        """
-        Send an email with an attachment
-        """
-        file_to_attach = "/home/antlabpi/purgeJig/loggingdebug/logfiles/" + '{}.log'.format(strftime('%d-%m-%y'))
+        self.fileAtachment = "/home/antlabpi/purgeJig/loggingdebug/logfiles/" + '{}.log'.format(strftime('%d-%m-%y'))
+        emailUserPath = '/home/antlabpi/purgeJig/notificationHandle/users.txt'
         base_path = os.path.dirname(os.path.abspath(__file__))
         print(base_path)
         config_path = os.path.join(base_path, "email.ini")
-        header = 'Content-Disposition', 'attachment; filename="%s"' % file_to_attach
+        self.header = 'Content-Disposition', 'attachment; filename="%s"' % self.fileAtachment
 
         # get the config
         if os.path.exists(config_path):
@@ -34,18 +39,14 @@ class emailNotification(log.log):
             sys.exit(1)
 
         # extract server and from_addr from config
-        host = cfg.get("smtp", "server")
-        from_addr = cfg.get("smtp", "from_addr")
+        self.host = cfg.get("smtp", "server")
+        fromAddr = cfg.get("smtp", "from_addr")
 
         # create the message
-        msg = MIMEMultipart()
-        msg["From"] = from_addr
-        msg["Subject"] = subject
-        msg["Date"] = formatdate(localtime=True)
-        if body_text:
-            msg.attach( MIMEText(body_text) )
-        
-        with open('/home/antlabpi/purgeJig/notificationHandle/users.txt', 'r') as usersFile: #read the login details
+        self.msg = MIMEMultipart()
+        self.msg["From"] = fromAddr
+
+        with open(emailUserPath, 'r') as usersFile: #read the login details
             toSendTo = ''
             for line in usersFile:
                 if toSendTo != '':
@@ -53,28 +54,38 @@ class emailNotification(log.log):
                 else:
                     toSendTo = toSendTo + line.strip()
         
-        msg['To'] = toSendTo
-        # msg["To"] = ', '.join(to_emails)
-        # msg["cc"] = ', '.join(cc_emails)
+        self.msg['To'] = toSendTo
+        # self.msg["To"] = ', '.join(to_emails)
+        # self.msg["cc"] = ', '.join(cc_emails)
 
+    def sendMailAttachment(self, subject, body_text):
+        """
+        Send an email with an attachment
+        """
+        # create the message
+        self.msg["Subject"] = subject
+        self.msg["Date"] = formatdate(localtime=True)
+        if body_text:
+            self.msg.attach( MIMEText(body_text) )
+        
         attachment = MIMEBase('application', "octet-stream")
         try:
-            with open(file_to_attach, "rb") as fh:
+            with open(self.fileAtachment, "rb") as fh:
                 data = fh.read()
             attachment.set_payload( data )
             encoders.encode_base64(attachment)
-            attachment.add_header(*header)
-            msg.attach(attachment)
+            attachment.add_header(*self.header)
+            self.msg.attach(attachment)
         except IOError:
-            msg = "Error opening attachment file %s" % file_to_attach
-            print(msg)
+            self.msg = "Error opening attachment file %s" % self.fileAtachment
+            print(self.msg)
             sys.exit(1)
 
         # emails = to_emails# + cc_emails
 
-        server = smtplib.SMTP(host)
+        server = smtplib.SMTP(self.host)
         server.starttls()
-        server.send_message(msg)
+        server.send_message(self.msg)
         server.quit()
 
 if __name__ == "__main__":
@@ -85,4 +96,5 @@ if __name__ == "__main__":
     body_text = "This email contains an attachment!"
     # send_email_with_attachment(subject, body_text, emails,
     #                            cc_emails, bcc_emails, path)
-    send_email_with_attachment(subject, body_text)
+    test = emailNotification()
+    test.sendMailAttachment(subject, body_text)
