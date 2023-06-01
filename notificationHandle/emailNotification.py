@@ -23,6 +23,7 @@ from email.utils import formatdate
 class emailNotification(log.log):
 
     def __init__(self):
+        super().__init__()
         self.fileAtachment = "/home/antlabpi/purgeJig/loggingdebug/logfiles/" + '{}.log'.format(strftime('%d-%m-%y'))
         emailUserPath = '/home/antlabpi/purgeJig/notificationHandle/users.txt'
         base_path = os.path.dirname(os.path.abspath(__file__))
@@ -45,6 +46,7 @@ class emailNotification(log.log):
         # create the message
         self.msg = MIMEMultipart()
         self.msg["From"] = fromAddr
+        self.logger('debug', 'Email is being sent from: {}'.format(self.msg["From"]))
 
         with open(emailUserPath, 'r') as usersFile: #read the login details
             toSendTo = ''
@@ -55,6 +57,7 @@ class emailNotification(log.log):
                     toSendTo = toSendTo + line.strip()
         
         self.msg['To'] = toSendTo
+        self.logger('debug', 'Email is being sent to: {}'.format(self.msg["To"]))
         # self.msg["To"] = ', '.join(to_emails)
         # self.msg["cc"] = ', '.join(cc_emails)
 
@@ -63,6 +66,7 @@ class emailNotification(log.log):
         Send an email with an attachment
         """
         # create the message
+        self.logger('debug', 'An email has been requested')
         self.msg["Subject"] = subject
         self.msg["Date"] = formatdate(localtime=True)
         if body_text:
@@ -88,7 +92,7 @@ class emailNotification(log.log):
         server.send_message(self.msg)
         server.quit()
 
-if __name__ == "__main__":
+def main():
     # cc_emails = ["someone@gmail.com"]
     # bcc_emails = ["anonymous@circe.org"]
 
@@ -98,3 +102,6 @@ if __name__ == "__main__":
     #                            cc_emails, bcc_emails, path)
     test = emailNotification()
     test.sendMailAttachment(subject, body_text)
+
+if __name__ == "__main__":
+    main()
