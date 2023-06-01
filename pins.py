@@ -8,6 +8,7 @@ Requires RPi to be installed
 """
 import RPi.GPIO as GPIO
 import os
+import time
 from loggingdebug import log
 
 class logicPins(log.log):
@@ -21,7 +22,7 @@ class logicPins(log.log):
         call (memory function, may not start from scratch)
         :type state: string, not optional
         """
-        # super().__init__()
+        super().__init__()
         GPIO.setmode(GPIO.BCM)
 
         # Constants... python does not like real constants (im not creating constants.py) - pls dont change this
@@ -143,7 +144,7 @@ class logicPins(log.log):
         GPIO.output(self.enCharge, chargeEnable)
 
 
-'''        
+
 def main():
     
     # Main program function
@@ -153,19 +154,24 @@ def main():
     count = 0
     
     print("program has started")
-    test = purgeModes()
-    GPIO.cleanup()
-    print("Program has ended")
+    test = logicPins()
     count += 1
 
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(19,GPIO.OUT)
+    GPIO.setup(test.enStepMotor,GPIO.OUT)
 
     GPIO.output(19, 1)
+    GPIO.output(test.enStepMotor,1)
 
-    
+    try:
+        while True:
+            time.sleep(2)
+
+    except KeyboardInterrupt:
+        print("\nExited measurements through keyboard interupt")
+        GPIO.cleanup()
 
 
 if __name__ == "__main__":
     main()
-'''

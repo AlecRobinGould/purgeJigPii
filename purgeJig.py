@@ -153,25 +153,6 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
         GPIO.output(self.enPump, 0)
         GPIO.output(self.enStepMotor, 0)
         GPIO.output(self.enFan, 0)
-    
-    def stateChecks(self):
-        self.__initiate()
-        supplyPressure = self.pressureConversion(self.readVoltage(self.supplyPressureChannel), "0-34bar")
-        if (supplyPressure >= self.proofPressure) or\
-        (supplyPressure < self.minSupplyPressure):
-            self.errorFlag = True
-            self.logger('error', 'The supply pressure is out of bounds. Exiting program')
-            GPIO.cleanup()
-            sys.exit()
-        elif (supplyPressure > self.maxSupplyPressure) and\
-        (supplyPressure < self.proofPressure):
-            self.errorFlag = False
-            self.logger('warning', "The supply pressure is safely too high. Program will continue")
-            self.__preFillCheck()
-        else:
-            self.errorFlag = False
-            self.logger('debug', 'The supply pressure was set correctly')
-            self.__preFillCheck()
 
     def __preFillCheck(self):
         if self.pressureConversion(self.readVoltage(self.ventPressureChannel), "0-10bar") >= self.minSupplyPressure:
@@ -180,7 +161,6 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
             self.preFilledFlag = False
     
     def __stateMachine(self):
-    
         if not self.preFilledFlag:
             while self.pressureConversion(self.readVoltage(self.ventPressureChannel), "0-10bar") >= self.fillPressure:
                 self.__heFill()
@@ -212,18 +192,48 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
                 self.cycleCount += 1
 
                 if (self.cycleCount - 1) == (self.noOfCycles):
-                    self.lastCycleFlag = True                
+                    self.lastCycleFlag = True              
+    
+    def stateChecks(self):
+        self.__initiate()
+        supplyPressure = self.pressureConversion(self.readVoltage(self.supplyPressureChannel), "0-34bar")
+        if (supplyPressure >= self.proofPressure) or\
+        (supplyPressure < self.minSupplyPressure):
+            self.errorFlag = True
+            self.logger('error', 'The supply pressure is out of bounds. Exiting program')
+            GPIO.cleanup()
+            return False            
+        elif (supplyPressure > self.maxSupplyPressure) and\
+        (supplyPressure < self.proofPressure):
+            self.errorFlag = False
+            self.logger('warning', "The supply pressure is safely too high. Program will continue")
+            self.__preFillCheck()
+            return True
+        else:
+            self.errorFlag = False
+            self.logger('debug', 'The supply pressure was set correctly')
+            self.__preFillCheck()
+            return True
 
+    def machineRun(self):
+        """
+        Method used to check if the sensors report viable values
+        for the device to operate safely and as expected
+        """
+        if self.stateChecks():
+            self.__stateMachine()
+        else:
+            sys.exit()
 
-class purge(purgeModes):
-    def __init__(self, noOfCycles):
+class purge(object):
+    def __init__(self, noOfCycles, state):
         # Get number of cycles and pass it to parent. Other option is to press cycle
         # button to increment before the purge process begins
-        super().__init__(noOfCycles)
+        self.runrun = purgeModes(noOfCycles, state)
         
     def runPurge(self):
-        if not self.errorFlag:
-            self.stateChecks()
+        if not self.runrun.stateChecks():
+            self.runrun.machineRun()
         # Check battery
         
         # Check sensors

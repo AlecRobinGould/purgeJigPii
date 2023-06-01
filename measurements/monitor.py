@@ -26,9 +26,10 @@ except ImportError:
 class measure(pins.logicPins):
     """Class for taking measurements, including conversions"""
     def __init__(self):
-
+        
         super().__init__() # This initialises the inherited class such that an instance does not
                            # to be explicitly created, including the log class.
+        self.logger("debug", "Measure constructor has run")
 
         self.SOCLookUp = [
             0.96637, 100,
