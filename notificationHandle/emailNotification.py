@@ -91,7 +91,7 @@ class emailNotification(log.log):
         server.starttls()
         server.send_message(self.msg)
         server.quit()
-
+"""
 def main():
     # cc_emails = ["someone@gmail.com"]
     # bcc_emails = ["anonymous@circe.org"]
@@ -105,3 +105,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+"""

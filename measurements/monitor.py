@@ -86,6 +86,9 @@ class measure(pins.logicPins):
         return self.adc.read_voltage(channelNo)
     
     def stateOfCharge(self, voltage):
+# ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+# Leaving a note here to check if charging should be disabled first before checking battery percentage
+# ====================================================================================================
         if voltage > self.SOCLookUp[0]:
             return self.SOCLookUp[1]
         elif voltage < self.SOCLookUp[12]:
@@ -133,12 +136,12 @@ class measure(pins.logicPins):
             for v in range(len(self.vacuumLookUp)):
                 i=v*2
                 if voltage <= self.vacuumLookUp[i] and voltage >= self.vacuumLookUp[i+2]:
-                    return self.vacuumLookUp[i+3] -((self.vacuumLookUp[i+3] - self.vacuumLookUp[i+1]) * ((voltage - self.vacuumLookUp[i+2]) / (self.vacuumLookUp[i] - self.vacuumLookUp[i+2])))
+                    return self.vacuumLookUp[i+3] -((self.vacuumLookUp[i+3] - self.vacuumLookUp[i+1]) *\
+                            ((voltage - self.vacuumLookUp[i+2]) / (self.vacuumLookUp[i] - self.vacuumLookUp[i+2])))
                 
     def statusMonitor(self):
         stat1MonValue = GPIO.input(self.stat1Mon)
         stat2MonValue = GPIO.input(self.stat2Mon)
-
         if stat1MonValue:
             if stat2MonValue:
                 self.logger('debug', 'Battery is charged')
@@ -166,8 +169,10 @@ def main():
                     x = read.vacuumConversion(read.readVoltage(i))
                     read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e}".format(x),i)
                 elif i == 2:
+                    read.batteryStateSet(1,1)
                     x = read.readVoltage(i)
                     read.display.lcd_display_string("Batt: "+str(read.stateOfCharge(x))+"% ",i)
+                    read.batteryStateSet(1,0)
                 elif i == 3:
                     x = read.pressureConversion(read.readVoltage(i), "0-34bar")
                     read.display.lcd_display_string("sensor {}: ".format(round(x,2)),i)

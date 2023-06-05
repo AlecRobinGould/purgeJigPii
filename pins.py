@@ -139,7 +139,14 @@ class logicPins(log.log):
         os.system("sudo reboot now -h")
 
     def batteryStateSet(self, batteryEnable = 1, chargeEnable = 1):
-
+        """
+        Method for enabling or disabling the ability to charge the battery and consume battery power
+        It is crutial that the battery enable pin is high. Loadshedding will likely corrupt data.
+        param : batteryEnable: signal used to enable or disable battery power. High mean enable battery
+        type : batteryEnable: int
+        param: chargeEnable: signal used to enable or disable charging. Low means battery can charge
+        type : chargeEnable: int
+        """
         GPIO.output(self.enBattery, batteryEnable )
         GPIO.output(self.enCharge, chargeEnable)
 

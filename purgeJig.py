@@ -11,6 +11,31 @@ import time, sys
 import RPi.GPIO as GPIO
 from measurements import monitor
 from loggingdebug import log
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class constantsNamespace():
+        """
+        Class for constants - the only purpose of this dataclass is to create values that cannot be 
+        reassigned (constants). Python does not have the const keyword, to avoid errors of
+        accidentally writing over constants - the method is rather prevent it from occuring.
+        A name of a value in caps is said to be a constant
+        """
+
+        # Constants
+        MAXSUPPLYPRESSURE = 16
+        MINSUPPLYPRESSURE = 4
+        PROOFPRESSURE = 24
+
+        VENTPRESSURE = 0.2
+        VACUUMPRESSURE = 0.05
+        FILLPRESSURE = 4
+        LASTFILLPRESSURE = 16
+
+        VACUUMCHANNEL = 1
+        BATTERYVOLTCHANNEL = 2
+        SUPPLYPRESSURECHANNEL = 3
+        VENTPRESSURECHANNEL = 4
 
 # inherit ability to control and monitor pins, and logging
 class purgeModes(monitor.measure, pins.logicPins, log.log):
@@ -23,6 +48,8 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
         :type string: 
         """
         super().__init__()
+        # constants dataclass where all values that shan't be changed reside 
+        self.constant = constantsNamespace()
         # This gets inherited from log.py with log class
         self.logger('debug', 'Purge constructor has run!')
         GPIO.output(self.enBattery, 1)
@@ -36,21 +63,6 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
         self.preFilledFlag = True
         self.lastCycleFlag = False
         self.errorFlag = False
-
-        # Constants
-        self.maxSupplyPressure = 16
-        self.minSupplyPressure = 4
-        self.proofPressure = 24
-
-        self.ventPressure = 0.2
-        self.vacuumPressure = 0.05
-        self.fillPressure = 4
-        self.lastFillPressure = 16
-
-        self.vacuumChannel = 1
-        self.batteryVoltChanel = 2
-        self.supplyPressureChannel = 3
-        self.ventPressureChannel = 4
 
     def __idle(self):
         """
@@ -155,14 +167,14 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
         GPIO.output(self.enFan, 0)
 
     def __preFillCheck(self):
-        if self.pressureConversion(self.readVoltage(self.ventPressureChannel), "0-10bar") >= self.minSupplyPressure:
+        if self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar") >= self.constant.MINSUPPLYPRESSURE:
             self.preFilledFlag = True
         else:
             self.preFilledFlag = False
     
     def __stateMachine(self):
         if not self.preFilledFlag:
-            while self.pressureConversion(self.readVoltage(self.ventPressureChannel), "0-10bar") >= self.fillPressure:
+            while self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar") >= self.constant.FILLPRESSURE:
                 self.__heFill()
             self.__heFillExit()
         else:
@@ -170,23 +182,23 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
                 self.__idle()
                 time.sleep(1)
 
-                while self.pressureConversion(self.readVoltage(self.ventPressureChannel), "0-10bar") >= self.ventPressure:
+                while self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar") >= self.constant.VENTPRESSURE:
                     self.__vent()
                 self.__ventExit()
 
-                while self.vacuumConversion(self.readVoltage(self.vacuumChannel)) >= self.vacuumPressure:
+                while self.vacuumConversion(self.readVoltage(self.constant.VACUUMCHANNEL)) >= self.constant.VACUUMPRESSURE:
                     self.__vac()
                 self.__vacExit()
                 
                 if self.lastCycleFlag:
-                    while self.pressureConversion(self.readVoltage(self.supplyPressureChannel), "0-34bar")\
-                    <= self.lastFillPressure and\
-                    (self.pressureConversion(self.readVoltage(self.ventPressureChannel), "0-10bar")) >= self.fillPressure:
+                    while self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")\
+                    <= self.constant.LASTFILLPRESSURE and\
+                    (self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")) >= self.constant.FILLPRESSURE:
                         self.__heFill()
                     
                 else:
-                    while self.pressureConversion(self.readVoltage(self.ventPressureChannel), "0-10bar")\
-                    <= self.fillPressure:
+                    while self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")\
+                    <= self.constant.FILLPRESSURE:
                         self.__heFill()
                 self.__heFillExit()
                 self.cycleCount += 1
@@ -196,15 +208,15 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
     
     def stateChecks(self):
         self.__initiate()
-        supplyPressure = self.pressureConversion(self.readVoltage(self.supplyPressureChannel), "0-34bar")
-        if (supplyPressure >= self.proofPressure) or\
-        (supplyPressure < self.minSupplyPressure):
+        supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
+        if (supplyPressure >= self.constant.PROOFPRESSURE) or\
+        (supplyPressure < self.constant.MINSUPPLYPRESSURE):
             self.errorFlag = True
             self.logger('error', 'The supply pressure is out of bounds. Exiting program')
             GPIO.cleanup()
             return False            
-        elif (supplyPressure > self.maxSupplyPressure) and\
-        (supplyPressure < self.proofPressure):
+        elif (supplyPressure > self.constant.MAXSUPPLYPRESSURE) and\
+        (supplyPressure < self.constant.PROOFPRESSURE):
             self.errorFlag = False
             self.logger('warning', "The supply pressure is safely too high. Program will continue")
             self.__preFillCheck()
