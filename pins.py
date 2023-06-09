@@ -34,6 +34,14 @@ class emergencyStopException(Exception):
         # Call the base class constructor with the parameters it needs
         super(emergencyStopException, self).__init__(message)
 
+class resetException(Error):
+    """
+    Class for over reset exception
+    """
+    def __init__(self, message='Exception rasied through reset'):
+        # Call the base class constructor with the parameters it needs
+        super(resetException, self).__init__(message)
+
 class logicPins(log.log):
 
     def __init__(self):
@@ -49,7 +57,7 @@ class logicPins(log.log):
         GPIO.setmode(GPIO.BCM)
 
         # Constants... python does not like real constants (im not creating constants.py) - pls dont change this
-        self.deBounce = 200   # time in milliseconds
+        self.deBounce = 100   # time in milliseconds
         # Pin numbers
         self.fillValve2 = 23
         self.ventValve = 24
@@ -189,10 +197,10 @@ class logicPins(log.log):
             else:
                 self.startFlag = 1
                 self.stopFlag = 0
-                time.sleep(1)
+                # time.sleep(1)
                 # self.removeCallBacks()
         self.logger('debug', 'Start button pressed, Startflag = %d'%self.startFlag)
-        # return True
+        return 
 
     def __stopCallback(self, channel):
         self.__stopRemoveCallbacks()
@@ -219,12 +227,13 @@ class logicPins(log.log):
         self.display.lcd_display_string("Reset pressed", 1)
         # self.display.backlight(0)
         self.logger('debug', 'Reset button pressed, Resetflag = %d'%self.resetFlag)
-        time.sleep(1)
-        time.sleep(0.5)
+        # time.sleep(1)
+        # time.sleep(0.5)
         if GPIO.input(self.nResetButton):
             # self.display.lcd_display_string("Resetting", 1)
             # self.display.lcd_display_string("programme", 2)
-            time.sleep(0.5)
+            # time.sleep(0.5)
+            # raise resetException()
             GPIO.cleanup()
             os.execl(sys.executable, sys.executable, *sys.argv)
         else:
