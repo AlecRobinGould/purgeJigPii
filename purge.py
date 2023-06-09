@@ -9,10 +9,20 @@ Requires modules from "List of dependencies.txt"
 import RPi.GPIO as GPIO
 import pins
 from loggingdebug import log
-from notificationHandle import emailNotification
+
 from measurements import monitor
 from dataclasses import dataclass
 import time, sys
+try:
+    from notificationHandle import emailNotification as notify
+except ImportError:
+    try:
+        import sys
+        sys.path.append('.')
+        from notificationHandle import emailNotification as notify
+    except ImportError:
+        raise ImportError(
+            "Failed to import library from parent folder")
 
 @dataclass(frozen=True)
 class constantsNamespace():
@@ -67,7 +77,7 @@ class resetException(pins.Error):
 
 # inherit ability to control and monitor pins, logging, and notifcations
 # This is the superclass!
-class purgeModes(monitor.measure, pins.logicPins, log.log, notificationHandle.emailNotification):
+class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.log):
     def __init__(self,cycleCount = 4, state = 'idle'):
         """
         Class constructor - Initialise functionality for creating rules of purge
@@ -490,9 +500,9 @@ class purgeModes(monitor.measure, pins.logicPins, log.log, notificationHandle.em
             self.__stateMachine()
             self.startFlag = 0
             self.display.lcd_clear()
-            self.sendMailAttachment(\
-                subject = "Purgejig bot has a good message for you!",\
-                      bodyText = "Dear Purgejig user,\n\nThe purge you initiated has successfully completed.\n\nKind regards,\nPurgejig bot")
+            self.sendMailAttachment(
+                subject = "Purgejig bot has a good message for you!",
+                bodyText = "Dear Purgejig user,\n\nThe purge you initiated has successfully completed.\n\nKind regards,\nPurgejig bot")
             self.display.lcd_display_string("Purge has completed.",1)
             self.display.lcd_display_string("Please restart to",2)
             self.display.lcd_display_string("proceed further.",3)
@@ -511,7 +521,10 @@ class purge(object):
         self.runrun = purgeModes(noOfCycles, state)
         
     def runPurge(self):
-            
+        """
+        Two seperate threads should run here. One involving battery health (low prio) and the other should handle purging (high prio)
+
+        """
         # Check battery
         
         # Check sensors
@@ -527,7 +540,7 @@ def main():
     '''
     try:
         try:
-            test = purge(1,'idle')
+            test = purge(4,'idle')
             test.runPurge()
             print("program has ended")
         except (overPressureException, pins.emergencyStopException) as e:

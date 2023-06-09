@@ -61,7 +61,7 @@ class emailNotification(log.log):
         # self.msg["To"] = ', '.join(to_emails)
         # self.msg["cc"] = ', '.join(cc_emails)
 
-    def sendMailAttachment(self, subject, body_text):
+    def sendMailAttachment(self, subject, bodyText):
         """
         Send an email with an attachment
         """
@@ -69,8 +69,8 @@ class emailNotification(log.log):
         self.logger('debug', 'An email has been requested')
         self.msg["Subject"] = subject
         self.msg["Date"] = formatdate(localtime=True)
-        if body_text:
-            self.msg.attach( MIMEText(body_text) )
+        if bodyText:
+            self.msg.attach( MIMEText(bodyText) )
         
         attachment = MIMEBase('application', "octet-stream")
         try:
@@ -97,11 +97,11 @@ def main():
     # bcc_emails = ["anonymous@circe.org"]
 
     subject = "Test email with attachment from Python"
-    body_text = "This email contains an attachment!"
-    # send_email_with_attachment(subject, body_text, emails,
+    bodyText = "This email contains an attachment!"
+    # send_email_with_attachment(subject, bodyText, emails,
     #                            cc_emails, bcc_emails, path)
     test = emailNotification()
-    test.sendMailAttachment(subject, body_text)
+    test.sendMailAttachment(subject, bodyText)
 
 if __name__ == "__main__":
     main()

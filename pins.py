@@ -224,7 +224,9 @@ class logicPins(log.log):
         self.__idle()
         self.resetFlag = 1
         time.sleep(0.2)
-        self.display.lcd_display_string("Reset pressed", 1)
+        self.display.lcd_display_string("Reset pressed ", 1)
+        self.display.lcd_display_string("                    ", 2)
+        self.display.lcd_display_string("                    ", 3)
         # self.display.backlight(0)
         self.logger('debug', 'Reset button pressed, Resetflag = %d'%self.resetFlag)
         # time.sleep(1)
@@ -237,9 +239,11 @@ class logicPins(log.log):
             GPIO.cleanup()
             os.execl(sys.executable, sys.executable, *sys.argv)
         else:
+            
+            time.sleep(2)
+            self.display.lcd_clear()
             self.display.lcd_display_string("Restarting device,", 1)
             self.display.lcd_display_string("Please be patient.", 2)
-            # time.sleep(0.5)
             os.system("sudo reboot now -h")
 
     def batteryStateSet(self, batteryEnable = 1, chargeEnable = 1):
