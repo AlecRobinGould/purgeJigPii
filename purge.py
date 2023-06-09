@@ -310,7 +310,6 @@ class purgeModes(monitor.measure, pins.logicPins, log.log):
             self.__initiate()
             supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
             fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-
             if (supplyPressure >= self.constant.PROOFPRESSURE) or\
             (supplyPressure < self.constant.MINSUPPLYPRESSURE):
                 self.errorFlag = True
