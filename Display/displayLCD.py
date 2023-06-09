@@ -187,10 +187,14 @@ class lcd:
 
    # define backlight on/off (lcd.backlight(1); off= lcd.backlight(0)
    def backlight(self, state): # for state, 1 = on, 0 = off
+      """
+      for state, 1 = on, 0 = off
+      """
       if state == 1:
          self.lcd_device.write_cmd(LCD_BACKLIGHT)
       elif state == 0:
          self.lcd_device.write_cmd(LCD_NOBACKLIGHT)
+         self.lcd_device.write_cmd(LCD_DISPLAYOFF)
 
    # add custom characters (0 - 7)
    def lcd_load_custom_chars(self, fontdata):

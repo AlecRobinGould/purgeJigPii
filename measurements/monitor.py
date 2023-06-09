@@ -7,17 +7,18 @@ Check "List of dependencies.txt" for required modules
 =====================================================
 """
 import RPi.GPIO as GPIO
-import DifferentialADCPi
+
 try: 
     from purgeJig import pins
-    from Display import displayLCD
+    import DifferentialADCPi
 except ImportError:
     print("Failed to import pins from python system path")
     try:
         import sys
         sys.path.append('.')
         # from purgeJig import pins
-        from purgeJig import pins
+        from measurements import DifferentialADCPi
+        import pins
         from Display import displayLCD
     except ImportError:
         raise ImportError(
@@ -64,7 +65,7 @@ class measure(pins.logicPins):
         ]
         # Initialise the ADC with default values
         try:
-            self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=18, bus=1)
+            self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=16, bus=1)
         except:
             try:
                 self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=18, bus=1)
@@ -77,8 +78,7 @@ class measure(pins.logicPins):
         self.adc.set_conversion_mode(0)
         # self.adc.set_bit_rate(18)
 
-        """Create instance of the lcd class. WIll later be inherited where it needs to be"""
-        self.display = displayLCD.lcd()
+        
     
     def readVoltage(self, channelNo):
         if (channelNo > 4) or (channelNo < 1):
@@ -156,12 +156,15 @@ class measure(pins.logicPins):
             else:
                 self.logger('error', 'Over-current or charge timeout fault')
                 return 'Major fault'
-            
+
 def main():
     read = measure()
     read.batteryStateSet(1, 0)
     try:
         while True:
+            # x = read.vacuumConversion(read.readVoltage(1))
+            # read.display.lcd_display_string("sensor {}: ".format(1)+ "{:.2e}".format(x),1)
+            
             for i in range(1,5):
                 # x = round(read.readVoltage(i), 2)
                 # read.display.lcd_display_string("                    ",i)
@@ -179,6 +182,7 @@ def main():
                 elif i == 4:
                     x = read.pressureConversion(read.readVoltage(i), "0-10bar")
                     read.display.lcd_display_string("sensor {}: ".format(round(x,2)),i)
+            
                     
     except KeyboardInterrupt:
         print("\nExited measurements through keyboard interupt")

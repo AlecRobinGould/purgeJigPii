@@ -2,4 +2,4 @@
 
 numpy>=1.8.0
 smbus2>=0.4.2
-RPi.GPIO>=0.7.0
+RPi.GPIO>=0.7.1

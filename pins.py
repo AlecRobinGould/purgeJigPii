@@ -7,9 +7,32 @@ Requires RPi to be installed
 ================================================
 """
 import RPi.GPIO as GPIO
-import os
+import os, sys
 import time
 from loggingdebug import log
+try: 
+    from Display import displayLCD
+except ImportError:
+    print("Failed to import pins from python system path")
+    try:
+        import sys
+        sys.path.append('.')
+        from Display import displayLCD
+    except ImportError:
+        raise ImportError(
+            "Failed to import library from parent folder")
+
+class Error(Exception):
+    """Base class for exceptions in this module."""
+    pass
+
+class emergencyStopException(Exception):
+    """
+    Class for error exception
+    """
+    def __init__(self, message='Exit rasied though a stop flag'):
+        # Call the base class constructor with the parameters it needs
+        super(emergencyStopException, self).__init__(message)
 
 class logicPins(log.log):
 
@@ -26,7 +49,7 @@ class logicPins(log.log):
         GPIO.setmode(GPIO.BCM)
 
         # Constants... python does not like real constants (im not creating constants.py) - pls dont change this
-        self.deBounce = 100   # time in milliseconds
+        self.deBounce = 200   # time in milliseconds
         # Pin numbers
         self.fillValve2 = 23
         self.ventValve = 24
@@ -45,6 +68,9 @@ class logicPins(log.log):
         self.enBattery = 19
         self.enPump = 26
 
+        # Sets "GPIO in use" warning off
+        GPIO.setwarnings(False)
+
         # Input pins
         GPIO.setup(self.stat1Mon,GPIO.IN)
         GPIO.setup(self.stat2Mon,GPIO.IN)
@@ -54,6 +80,7 @@ class logicPins(log.log):
         GPIO.setup(self.nResetButton,GPIO.IN)
         GPIO.setup(self.nCycleButton,GPIO.IN)
 
+        # time.sleep(1.5)
         # Output pins
         GPIO.setup(self.fillValve2,GPIO.OUT)
         GPIO.setup(self.ventValve,GPIO.OUT)
@@ -73,16 +100,18 @@ class logicPins(log.log):
         self.startFlag = 0
         self.stopFlag = 0
         self.resetFlag = 0
+        self.errorFlag = False
 
+        # self.setCallbacks()
         GPIO.add_event_detect(self.nCycleButton, GPIO.FALLING, self.__cycleCallback, self.deBounce)
         GPIO.add_event_detect(self.nStartButton, GPIO.FALLING, self.__startCallback, self.deBounce)
         GPIO.add_event_detect(self.nStopButton, GPIO.FALLING, self.__stopCallback, self.deBounce)
         GPIO.add_event_detect(self.nResetButton, GPIO.FALLING, self.__resetCallback, self.deBounce)
 
-        # Object for logging to a file
-        # This gets inherited from log.py with log class
-        # self.logger()
-        # self.DEBUG = log.log()
+        """Create instance of the lcd class. WIll later be inherited where it needs to be"""
+        self.display = displayLCD.lcd()
+
+        self.logger("debug", "logicPins constructor has run")
 
     def setCallbacks(self):
         """Method for detecting button presses"""
@@ -90,53 +119,119 @@ class logicPins(log.log):
         GPIO.add_event_detect(self.nCycleButton, GPIO.FALLING, self.__cycleCallback, self.deBounce)
         GPIO.add_event_detect(self.nStartButton, GPIO.FALLING, self.__startCallback, self.deBounce)
         GPIO.add_event_detect(self.nStopButton, GPIO.FALLING, self.__stopCallback, self.deBounce)
-        GPIO.add_event_detect(self.nResetButton, GPIO.FALLING, self.__resetCallback, self.deBounce)
+        GPIO.add_event_detect(self.nResetButton, GPIO.FALLING, self.__resetCallback, self.deBounce)            
 
-    def removeCallBacks(self):
-        """Method for removing button presses"""
-        if self.startFlag:
-            GPIO.remove_event_detect(self.nCycleButton)
-            GPIO.remove_event_detect(self.nStartButton)
-        if self.stopFlag:
-            GPIO.remove_event_detect(self.nStopButton)
-        if self.resetFlag:
-            GPIO.remove_event_detect(self.nCycleButton)
-            GPIO.remove_event_detect(self.nStartButton)
-            GPIO.remove_event_detect(self.nStopButton)
-            GPIO.remove_event_detect(self.nResetButton)
+    def __startRemoveCallbacks(self):
+        GPIO.remove_event_detect(self.nCycleButton)
+        GPIO.remove_event_detect(self.nStartButton)
+        self.logger('debug', 'cycle and start button detect off')
+    def __startAddCallbacks(self):
+        GPIO.add_event_detect(self.nCycleButton, GPIO.FALLING, self.__cycleCallback, self.deBounce)
+        GPIO.add_event_detect(self.nStartButton, GPIO.FALLING, self.__startCallback, self.deBounce)
+        self.logger('debug', 'cycle and start button detect on again')
+    def __stopRemoveCallbacks(self):
+        GPIO.remove_event_detect(self.nCycleButton)
+        GPIO.remove_event_detect(self.nStartButton)
+        GPIO.remove_event_detect(self.nStopButton)
+        self.logger('debug', 'stop button detect off')
+    def __stopAddCallbacks(self):
+        GPIO.add_event_detect(self.nStopButton, GPIO.FALLING, self.__stopCallback, self.deBounce)
+        self.logger('debug', 'stop button detect on again')
+    def __resetRemoveCallbacks(self):
+        GPIO.remove_event_detect(self.nCycleButton)
+        GPIO.remove_event_detect(self.nStartButton)
+        GPIO.remove_event_detect(self.nStopButton)
+        GPIO.remove_event_detect(self.nResetButton)
+        self.logger('debug', 'cycle, start, stop, and reset button detect off')
+    def __resetAddCallbacks(self):
+        GPIO.remove_event_detect(self.nCycleButton)
+        GPIO.remove_event_detect(self.nStartButton)
+        GPIO.remove_event_detect(self.nStopButton)
+        GPIO.remove_event_detect(self.nResetButton)
+        self.logger('debug', 'All button detects added again')
+
+    def __idle(self):
+        """
+        Internal method for setting an idle mode
+        """
+        print("idle")
+        GPIO.output(self.fillValve2, 0)
+        GPIO.output(self.ventValve, 0)
+        GPIO.output(self.vacValve, 0)
+        GPIO.output(self.enFan, 0)
+        GPIO.output(self.enStepMotor, 0)
+        GPIO.output(self.fillValve1, 0)
+        GPIO.output(self.enPump, 0)
 
     def __cycleCallback(self, channel):
         """Internal method for incrementing a button press counter"""
         # Increment the number of cycles to be performed
-        self.cycleCount += 1
-        print(self.cycleCount)
-
-        # DEBUG = log.log()
-        self.logger('debug', 'cycle count incremented to {}'.format(self.cycleCount))
+        time.sleep(0.2)
+        if GPIO.input(self.nCycleButton):
+            self.cycleCount += 1
+            self.logger('debug', 'cycle count incremented to: %d'%self.cycleCount)
+        else:
+            if self.cycleCount >= 1:
+                self.cycleCount -= 1
+                self.logger('debug', 'cycle count decremented to: %d'%self.cycleCount)
+            else:
+                self.logger('debug', 'cycle count cannot be decremented further than: %d'%self.cycleCount)
+            
         
     def __startCallback(self, channel):
         """Internal method for starting purge"""
-        print("start button pressed")
-        if self.startFlag:
-            self.startFlag = 0
+        self.__startRemoveCallbacks()
+        if self.errorFlag:
+            self.logger('error', 'Start button was pressed during active error')
         else:
-            self.startFlag = 1
-            self.removeCallBacks()       
+            if self.startFlag:
+                self.startFlag = 0
+            else:
+                self.startFlag = 1
+                self.stopFlag = 0
+                time.sleep(1)
+                # self.removeCallBacks()
+        self.logger('debug', 'Start button pressed, Startflag = %d'%self.startFlag)
+        # return True
 
     def __stopCallback(self, channel):
-        print("stop button pressed")
-
+        self.__stopRemoveCallbacks()
+        self.__idle()
+        self.logger('debug', 'Stop button pressed, Stopflag = %d'%self.stopFlag)
         if self.stopFlag:
             self.stopFlag = 0
         else:
             self.stopFlag = 1
-            self.removeCallBacks()
+            self.startFlag = 0
+            time.sleep(0.5)
+            self.display.lcd_clear()
+            self.display.lcd_display_string("E-stop pressed", 1)
+            self.display.lcd_display_string("Press reset to", 2)
+            self.display.lcd_display_string("Continue...", 3)
+        raise emergencyStopException()
+        # return True
         
     def __resetCallback(self, channel):
-        print("reset pressed")
+        self.__resetRemoveCallbacks()
+        self.__idle()
         self.resetFlag = 1
-        self.removeCallBacks()
-        os.system("sudo reboot now -h")
+        time.sleep(0.2)
+        self.display.lcd_display_string("Reset pressed", 1)
+        # self.display.backlight(0)
+        self.logger('debug', 'Reset button pressed, Resetflag = %d'%self.resetFlag)
+        time.sleep(1)
+        time.sleep(0.5)
+        if GPIO.input(self.nResetButton):
+            # self.display.lcd_display_string("Resetting", 1)
+            # self.display.lcd_display_string("programme", 2)
+            time.sleep(0.5)
+            GPIO.cleanup()
+            os.execl(sys.executable, sys.executable, *sys.argv)
+        else:
+            self.display.lcd_display_string("Restarting device,", 1)
+            self.display.lcd_display_string("Please be patient.", 2)
+            # time.sleep(0.5)
+            os.system("sudo reboot now -h")
 
     def batteryStateSet(self, batteryEnable = 1, chargeEnable = 1):
         """
@@ -151,7 +246,7 @@ class logicPins(log.log):
         GPIO.output(self.enCharge, chargeEnable)
 
 
-
+"""
 def main():
     
     # Main program function
@@ -182,3 +277,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+"""
