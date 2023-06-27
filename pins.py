@@ -111,6 +111,7 @@ class logicPins(log.log):
         self.errorFlag = False
 
         # self.setCallbacks()
+        # NOTE: These are created in a seperate threads and the callbacks should be treated as such
         GPIO.add_event_detect(self.nCycleButton, GPIO.FALLING, self.__cycleCallback, self.deBounce)
         GPIO.add_event_detect(self.nStartButton, GPIO.FALLING, self.__startCallback, self.deBounce)
         GPIO.add_event_detect(self.nStopButton, GPIO.FALLING, self.__stopCallback, self.deBounce)
@@ -227,6 +228,7 @@ class logicPins(log.log):
         self.display.lcd_display_string("Reset pressed ", 1)
         self.display.lcd_display_string("                    ", 2)
         self.display.lcd_display_string("                    ", 3)
+        self.display.lcd_display_string("                    ", 4)
         # self.display.backlight(0)
         self.logger('debug', 'Reset button pressed, Resetflag = %d'%self.resetFlag)
         # time.sleep(1)

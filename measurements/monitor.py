@@ -76,7 +76,7 @@ class measure(pins.logicPins):
         # Setting additional adc parameters
         self.adc.set_pga(1)
         self.adc.set_conversion_mode(0)
-        # self.adc.set_bit_rate(18)
+        self.adc.set_bit_rate(16)
 
         
     
@@ -112,17 +112,19 @@ class measure(pins.logicPins):
         """
         try:
             if type == "0-10bar":
-                # print("Volt10bar: {}\n".format(volt))
+                print("Volt10bar: {}\n".format(volt))
                 if volt >= 0.4:
-                    return (volt - 0.4012)*6.25 # 0.4012 calculated from resistor netowrk actual value
+                    return (volt - 0.4019)*6.25 # 0.4012 calculated from resistor netowrk actual value
                 else:
-                    return 0.00
+                    # return 0.00
+                    return (volt - 0.4019)*6.25
             else:
-                # print("Volt34bar: {}\n".format(volt))
+                print("Volt34bar: {}\n".format(volt))
                 if volt >= 0.4:
-                    return (volt - 0.4008)*21.54625
+                    return (volt - 0.3985)*21.54625
                 else:
-                    return 0.00
+                    # return 0.00
+                    return (volt - 0.39845)*21.54625
         except ValueError:
                 raise ValueError("Value does not correspond")
     

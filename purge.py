@@ -24,13 +24,14 @@ except ImportError:
         raise ImportError(
             "Failed to import library from parent folder")
 
-@dataclass(frozen=True)
+@dataclass(frozen = True)
 class constantsNamespace():
         """
         Class for constants - the only purpose of this dataclass is to create values that cannot be 
         reassigned (constants). Python does not have the const keyword, to avoid errors of
         accidentally writing over constants - the method is rather prevent it from occuring.
         A name of a value in caps is said to be a constant.
+        NOTE: frozen keyword indicates a readonly (sort of)
         """
         # Constants
         MAXSUPPLYPRESSURE = 16
@@ -75,10 +76,18 @@ class resetException(pins.Error):
         # Call the base class constructor with the parameters it needs
         super(resetException, self).__init__(message)
 
+class timeOutError(pins.Error):
+    """
+    Class for over reset exception
+    """
+    def __init__(self, message='Exception rasied through a process taking too long'):
+        # Call the base class constructor with the parameters it needs
+        super(timeOutError, self).__init__(message)
+
 # inherit ability to control and monitor pins, logging, and notifcations
 # This is the superclass!
 class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.log):
-    def __init__(self,cycleCount = 4, state = 'idle'):
+    def __init__(self, cycleCount = 4, state = 'idle'):
         """
         Class constructor - Initialise functionality for creating rules of purge
         :param noOfCycles: 
@@ -111,7 +120,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
         """
         print("idle")
         GPIO.output(self.fillValve2, 0)
-        GPIO.output(self.ventValve, 0)
+        # GPIO.output(self.ventValve, 0)
         GPIO.output(self.vacValve, 0)
         GPIO.output(self.enFan, 0)
         GPIO.output(self.enStepMotor, 0)
@@ -123,8 +132,9 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
         Internal method for opening supply pressure valve
         """
         print("initiate")
-        GPIO.output(self.fillValve1, 1)
-        GPIO.output(self.fillValve2, 0)
+        # GPIO.output(self.fillValve1, 1)
+        GPIO.output(self.fillValve1, 0)
+        # GPIO.output(self.fillValve2, 0)
         GPIO.output(self.ventValve, 0)
         GPIO.output(self.vacValve, 0)
         GPIO.output(self.enPump, 0)
@@ -155,7 +165,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
         """
         print("helium fill")
         GPIO.output(self.fillValve1, 1)
-        GPIO.output(self.fillValve2, 1)
+        # GPIO.output(self.fillValve2, 1)
         GPIO.output(self.ventValve, 0)
         GPIO.output(self.vacValve, 0)
         GPIO.output(self.enPump, 0)
@@ -168,7 +178,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
         """
         print("exit helium fill")
         GPIO.output(self.fillValve1, 0)
-        GPIO.output(self.fillValve2, 0)
+        # GPIO.output(self.fillValve2, 0)
         GPIO.output(self.ventValve, 0)
         GPIO.output(self.vacValve, 0)
         GPIO.output(self.enPump, 0)
@@ -178,7 +188,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
     def __vent(self):
         print("vent")
         GPIO.output(self.fillValve1, 0)
-        GPIO.output(self.fillValve2, 0)
+        # GPIO.output(self.fillValve2, 0)
         GPIO.output(self.ventValve, 1)
         GPIO.output(self.vacValve, 0)
         GPIO.output(self.enPump, 0)
@@ -188,7 +198,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
     def __ventExit(self):
        print("exit vent")
        GPIO.output(self.fillValve1, 0)
-       GPIO.output(self.fillValve2, 0)
+    #    GPIO.output(self.fillValve2, 0)
        GPIO.output(self.ventValve, 0)
        GPIO.output(self.vacValve, 0)
        GPIO.output(self.enPump, 0)
@@ -199,7 +209,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
     def __vac(self):
         print("Vacuum")
         GPIO.output(self.fillValve1, 0)
-        GPIO.output(self.fillValve2, 0)
+        # GPIO.output(self.fillValve2, 0)
         GPIO.output(self.ventValve, 0)
         GPIO.output(self.enPump, 1)
         time.sleep(5)   # This is for delaying the time of the vacuum valve opening
@@ -216,7 +226,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
     def __vacExit(self):
         print("exiting vacuum")
         GPIO.output(self.fillValve1, 0)
-        GPIO.output(self.fillValve2, 0)
+        # GPIO.output(self.fillValve2, 0)
         GPIO.output(self.ventValve, 0)
         GPIO.output(self.vacValve, 0)
         time.sleep(1)   # This closes the valve before the vacuum pump turns off
@@ -227,13 +237,13 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
 
     def __preFillCheck(self, inputPressure, comparison):
 
-        self.__preFillCheckValves()
+        # self.__preFillCheckValves()
         supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
         ventPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
         self.display.lcd_clear()
         if comparison == 'higher':
 
-            if (ventPressure >= self.constant.MAXLOWGAUGE) and supplyPressure >= self.constant.PREFILLPRESSURE:
+            if (ventPressure >= self.constant.MAXLOWGAUGE): # and supplyPressure >= self.constant.PREFILLPRESSURE:
                 self.preFilledFlag = True
                 self.logger('debug','The component was prefilled')
             else:
@@ -259,7 +269,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
 
                 self.__heFillExit()
         else:
-            if (ventPressure >= self.constant.MAXLOWGAUGE) and supplyPressure >= inputPressure:
+            if (ventPressure >= self.constant.MAXLOWGAUGE): # and supplyPressure >= inputPressure:
                 self.preFilledFlag = True
                 self.logger('debug','The component was prefilled')
             else:
@@ -308,7 +318,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
             if (ventPressure  >= self.constant.VENTPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
                 self.__vent()
                 self.display.lcd_display_string("Venting Process...", 2)
-            while ventPressure  >= self.constant.VENTPRESSURE:
+            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < 0:
                 ventPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
                 self.display.lcd_display_string("Press2: {} bar ".format(round(ventPressure,2)), 3)
                 if self.stopFlag:
@@ -475,6 +485,10 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
             else:
                 self.errorFlag = False
                 self.logger('warning', 'The supply pressure was out of bounds. User succeeded to fix it')
+                if (supplyPressure > self.constant.MAXSUPPLYPRESSURE) and (supplyPressure < self.constant.PROOFPRESSURE):
+                    self.__preFillCheck(supplyPressure, 'higher')
+                else:
+                    self.__preFillCheck(supplyPressure, 'lower')
                 return True
 
 
@@ -566,6 +580,8 @@ def main():
         time.sleep(1)
         GPIO.cleanup()
         time.sleep(1)
+    finally:
+        pass
 
 if __name__ == "__main__":
     main()

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import os
 import smtplib
 import sys
@@ -27,7 +29,7 @@ class emailNotification(log.log):
         self.fileAtachment = "/home/antlabpi/purgeJig/loggingdebug/logfiles/" + '{}.log'.format(strftime('%d-%m-%y'))
         emailUserPath = '/home/antlabpi/purgeJig/notificationHandle/users.txt'
         base_path = os.path.dirname(os.path.abspath(__file__))
-        print(base_path)
+        # print(base_path)
         config_path = os.path.join(base_path, "email.ini")
         self.header = 'Content-Disposition', 'attachment; filename="%s"' % self.fileAtachment
 
@@ -36,8 +38,9 @@ class emailNotification(log.log):
             cfg = ConfigParser()
             cfg.read(config_path)
         else:
-            print("Config not found! Exiting!")
-            sys.exit(1)
+            # print("Config not found! Exiting!")
+            # sys.exit(1)
+            self.logger('error', 'Email config file not found')
 
         # extract server and from_addr from config
         self.host = cfg.get("smtp", "server")
@@ -82,8 +85,9 @@ class emailNotification(log.log):
             self.msg.attach(attachment)
         except IOError:
             self.msg = "Error opening attachment file %s" % self.fileAtachment
-            print(self.msg)
-            sys.exit(1)
+            self.logger('error', self.msg)
+            # print(self.msg)
+            # sys.exit(1)
 
         # emails = to_emails# + cc_emails
 
@@ -96,7 +100,7 @@ def main():
     # cc_emails = ["someone@gmail.com"]
     # bcc_emails = ["anonymous@circe.org"]
 
-    subject = "Test email with attachment from Python"
+    subject = "Test email with attachment"
     bodyText = "This email contains an attachment!"
     # send_email_with_attachment(subject, bodyText, emails,
     #                            cc_emails, bcc_emails, path)
