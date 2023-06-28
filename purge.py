@@ -125,8 +125,8 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
         self.preFilledFlag = True
         self.lastCycleFlag = False
         
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        timeoutPath = os.path.join(base_path, "Decorate/timeOuts.ini")
+        
+        timeoutPath = "/home/antlabpi/purgeJig/Decorate/timeOuts.ini"
         print(timeoutPath)
         
         # get the config
@@ -327,7 +327,10 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
     def __safetyCheck(self):
         pass
     
-    @customDecorator.customDecorators.exitAfter(5)
+    # Take note that this is not a set of char being passes into
+    # this decorator. It is an attribute of purgeModes class.
+    # See __init__ for self.venttimeout
+    @customDecorator.customDecorators.exitAfter('venttimeout')
     def __ventProcess(self):
         try:
             # Venting process

@@ -28,14 +28,17 @@ class customDecorators():
         # raise timeOutError()
         thread.interrupt_main() # raises KeyboardInterrupt
 
-    def exitAfter(**s):
+    def exitAfter(s):
         '''
         use as decorator to exit process if 
         function takes longer than s number seconds
         '''
+        # print(s)
+
         def outer(fn):
             def inner(self, *args, **kwargs):
-                timeLimit = self.venttimeout
+                timeLimit = int(getattr(self, s))
+                print("The time limit is: {}".format(timeLimit))
                 timer = threading.Timer(timeLimit, customDecorators.quitFunction, args=[fn.__name__])
                 timer.start()
                 try:
@@ -45,8 +48,8 @@ class customDecorators():
                 return result
             return inner
         return outer
-
-    """Usage example as a countdown timer"""
+"""
+    # Usage example as a countdown timer
     @exitAfter(3)
     def countdown(n):
         print('countdown started', flush=True)
@@ -54,3 +57,4 @@ class customDecorators():
             print(i, end=', ', flush=True)
             sleep(1)
         print('countdown finished')
+"""
