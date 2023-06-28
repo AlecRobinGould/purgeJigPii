@@ -112,14 +112,14 @@ class measure(pins.logicPins):
         """
         try:
             if type == "0-10bar":
-                print("Volt10bar: {}\n".format(volt))
+                # print("Volt10bar: {}\n".format(volt))
                 if volt >= 0.4:
                     return (volt - 0.4019)*6.25 # 0.4012 calculated from resistor netowrk actual value
                 else:
                     # return 0.00
                     return (volt - 0.4019)*6.25
             else:
-                print("Volt34bar: {}\n".format(volt))
+                # print("Volt34bar: {}\n".format(volt))
                 if volt >= 0.4:
                     return (volt - 0.3985)*21.54625
                 else:

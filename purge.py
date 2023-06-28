@@ -9,6 +9,9 @@ Requires modules from "List of dependencies.txt"
 import RPi.GPIO as GPIO
 import pins
 from loggingdebug import log
+from Decorate import customDecorator
+import os
+from configparser import ConfigParser
 
 from measurements import monitor
 from dataclasses import dataclass
@@ -51,6 +54,15 @@ class constantsNamespace():
         BATTERYVOLTCHANNEL = 2
         SUPPLYPRESSURECHANNEL = 3
         VENTPRESSURECHANNEL = 4
+
+class timeOutError(pins.Error):
+    """
+    Class for timeout error exception.
+    Take note of the caps "O"
+    """
+    def __init__(self, message='Error rasied though a timeout'):
+        # Call the base class constructor with the parameters it needs
+        super(timeOutError, self).__init__(message)
 
 class faultErrorException(pins.Error):
     """
@@ -113,6 +125,22 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
         self.preFilledFlag = True
         self.lastCycleFlag = False
         
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        timeoutPath = os.path.join(base_path, "Decorate/timeOuts.ini")
+        print(timeoutPath)
+        
+        # get the config
+        if os.path.exists(timeoutPath):
+            self.timecfg = ConfigParser()
+            self.timecfg.read(timeoutPath)
+            self.venttimeout = self.timecfg.get("timeout", "venttimeout")
+            self.initialvactimeout = self.timecfg.get("timeout", "initialvactimeout")
+            self.vacuumtimeout = self.timecfg.get("timeout", "vacuumtimeout")
+            self.filltimeout = self.timecfg.get("timeout", "filltimeout")
+        else:
+            # print("Config not found! Exiting!")
+            # sys.exit(1)
+            self.logger('error', 'Timeout config file not found')
 
     def __idle(self):
         """
@@ -120,7 +148,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
         """
         print("idle")
         GPIO.output(self.fillValve2, 0)
-        # GPIO.output(self.ventValve, 0)
+        GPIO.output(self.ventValve, 0)
         GPIO.output(self.vacValve, 0)
         GPIO.output(self.enFan, 0)
         GPIO.output(self.enStepMotor, 0)
@@ -299,6 +327,39 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
     def __safetyCheck(self):
         pass
     
+    @customDecorator.customDecorators.exitAfter(5)
+    def __ventProcess(self):
+        try:
+            # Venting process
+            ventPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+            if (ventPressure  >= self.constant.VENTPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
+                self.__vent()
+                self.display.lcd_display_string("Venting Process...", 2)
+            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < 0:
+                ventPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+                self.display.lcd_display_string("Press2: {} bar ".format(round(ventPressure,2)), 3)
+                if self.stopFlag:
+                    self.logger('debug', 'Emergency stop flag. Exiting from vent.')
+                    raise pins.emergencyStopException()
+        except KeyboardInterrupt:
+            self.stopFlag = True
+            self.__ventExit()
+        finally:
+            if self.stopFlag:
+                self.__idle()
+                raise timeOutError()
+            else:
+                self.__ventExit()
+                self.display.lcd_display_string("                    ", 2)
+                self.display.lcd_display_string("                    ", 3)
+    
+    def __vacProcess(self):
+        pass
+
+    def __fillProcess(self):
+        pass
+        
+    
     def __stateMachine(self):
         """Add in provision to check for stopFlag and resetFlag"""
         self.display.lcd_clear()
@@ -312,22 +373,9 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
                 self.lastCycleFlag = True              
 
             self.display.lcd_display_string("Cycle %d of %d"%((self.noOfCycles+1), self.cycleCount), 1)
-
-            # Venting process
-            ventPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-            if (ventPressure  >= self.constant.VENTPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
-                self.__vent()
-                self.display.lcd_display_string("Venting Process...", 2)
-            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < 0:
-                ventPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-                self.display.lcd_display_string("Press2: {} bar ".format(round(ventPressure,2)), 3)
-                if self.stopFlag:
-                    self.logger('debug', 'Emergency stop flag. Exiting from vent.')
-                    raise pins.emergencyStopException()
-                
-            self.__ventExit()
-            self.display.lcd_display_string("                    ", 2)
-            self.display.lcd_display_string("                    ", 3)
+            
+            
+            self.__ventProcess()
 
             # Vacuum process
             vacuumPressure = self.vacuumConversion(self.readVoltage(self.constant.VACUUMCHANNEL))
@@ -557,7 +605,7 @@ def main():
             test = purge(4,'idle')
             test.runPurge()
             print("program has ended")
-        except (overPressureException, pins.emergencyStopException) as e:
+        except (overPressureException, pins.emergencyStopException, timeOutError) as e:
             print(e)
             # test.runrun.__idle()
             while GPIO.input(test.runrun.nResetButton):

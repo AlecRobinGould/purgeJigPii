@@ -11,7 +11,6 @@ except ImportError:
     sys.path.append('.')
     import pins
 
-
 class timeOutError(pins.Error):
     """
     Class for error exception
@@ -20,7 +19,7 @@ class timeOutError(pins.Error):
         # Call the base class constructor with the parameters it needs
         super(timeOutError, self).__init__(message)
 
-class Test():
+class customDecorators():
 
     def __init__(self):
         pass
@@ -51,7 +50,7 @@ class Test():
             return inner
         return outer
     
-    @exit_after(60)
+    @exit_after(3)
     def countdown(n):
         print('countdown started', flush=True)
         for i in range(n, -1, -1):
@@ -64,10 +63,13 @@ class Test():
 def main():
     '''
     Main program function
+
+    As an implementation, add a try catch with the process function in the try. The catch condition should be KeyboardInterupt with a raise timeOutError outside of that
+    A .ini file can be created to pull the timeout time limit from.
     '''
     try:    
         try:
-            test = Test()
+            test = customDecorators()
             test.countdown(6)
             x = 0
         except KeyboardInterrupt:
@@ -76,7 +78,6 @@ def main():
         if x:
             sleep(2)
             raise timeOutError()
-            # raise timeOutError()
     except KeyboardInterrupt or timeOutError as e:
         print(e)
         print("Program has entered second exception")
