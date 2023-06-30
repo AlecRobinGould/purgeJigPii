@@ -46,9 +46,11 @@ class constantsNamespace():
 
         PREFILLPRESSURE = 16
         VENTPRESSURE = 0.2
+        INITVACUUMPRESSURE = 1
         VACUUMPRESSURE = 0.05
         FILLPRESSURE = 4
         LASTFILLPRESSURE = 16
+        SAFETOVACUUM = 0.5
 
         VACUUMCHANNEL = 1
         BATTERYVOLTCHANNEL = 2
@@ -232,6 +234,16 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
        GPIO.output(self.enPump, 0)
        GPIO.output(self.enStepMotor, 0)
        GPIO.output(self.enFan, 1)
+    
+    def __vacInit(self):
+        print("Vacuum initialisation")
+        GPIO.output(self.fillValve1, 0)
+        # GPIO.output(self.fillValve2, 0)
+        GPIO.output(self.ventValve, 0)
+        GPIO.output(self.enPump, 1)
+        GPIO.output(self.vacValve, 0)
+        GPIO.output(self.enStepMotor, 0)
+        GPIO.output(self.enFan, 1)
 
 
     def __vac(self):
@@ -240,8 +252,6 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
         # GPIO.output(self.fillValve2, 0)
         GPIO.output(self.ventValve, 0)
         GPIO.output(self.enPump, 1)
-        time.sleep(5)   # This is for delaying the time of the vacuum valve opening
-                        # Allowing the vaccum pump time to create a vacuum, reducing chances of contamination
         GPIO.output(self.vacValve, 1)
         GPIO.output(self.enStepMotor, 0)
         GPIO.output(self.enFan, 1)
@@ -330,6 +340,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
     # Take note that this is not a set of char being passes into
     # this decorator. It is an attribute of purgeModes class.
     # See __init__ for self.venttimeout
+
     @customDecorator.customDecorators.exitAfter('venttimeout')
     def __ventProcess(self):
         try:
@@ -338,7 +349,7 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
             if (ventPressure  >= self.constant.VENTPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
                 self.__vent()
                 self.display.lcd_display_string("Venting Process...", 2)
-            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < 0:
+            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < -1:
                 ventPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
                 self.display.lcd_display_string("Press2: {} bar ".format(round(ventPressure,2)), 3)
                 if self.stopFlag:
@@ -355,12 +366,167 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
                 self.__ventExit()
                 self.display.lcd_display_string("                    ", 2)
                 self.display.lcd_display_string("                    ", 3)
-    
+                
+    @customDecorator.customDecorators.exitAfter('initialvactimeout')
+    def __initVacProcess(self):
+        try:
+            self.display.lcd_display_string("Initisalising vac...", 2)
+            self.__vacInit()
+            vacuumPressure = self.vacuumConversion(self.readVoltage(self.constant.VACUUMCHANNEL))
+            while vacuumPressure >= self.constant.INITVACUUMPRESSURE:
+                vacuumPressure = self.vacuumConversion(self.readVoltage(self.constant.VACUUMCHANNEL))
+                self.display.lcd_display_string("Vac: {:.2e}".format(vacuumPressure),3)
+                if self.stopFlag:
+                    self.logger('debug', 'Emergency stop flag. Exiting from vacuum.')
+                    raise pins.emergencyStopException()
+        except:
+            self.stopFlag = True
+            self.__vacExit()
+        finally:
+            if self.stopFlag:
+                self.__idle()
+                raise timeOutError()
+            else:
+                self.__vacExit()
+                self.display.lcd_display_string("                    ", 2)
+                self.display.lcd_display_string("                    ", 3)
+            
+    @customDecorator.customDecorators.exitAfter('vacuumtimeout')
     def __vacProcess(self):
-        pass
+        try:
+            # Vacuum process
+            fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+            if (fillPressure >= self.constant.SAFETOVACUUM) and self.stopFlag == 0 and self.resetFlag == 0:
+# Remember to change the error class to a suitable vacuum name and also display what needs to be displayed
+                raise overPressureException()
+            else:
+                self.display.lcd_display_string("Vacuum Process...   ", 2)
+                self.__vac()
+            time.sleep(1)
+            vacuumPressure = self.vacuumConversion(self.readVoltage(self.constant.VACUUMCHANNEL))
+            if (vacuumPressure >= self.constant.INITVACUUMPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
+                while vacuumPressure >= self.constant.VACUUMPRESSURE:
+                    vacuumPressure = self.vacuumConversion(self.readVoltage(self.constant.VACUUMCHANNEL))
+                    self.display.lcd_display_string("Vac: {:.2e}".format(vacuumPressure),3)
+                    if self.stopFlag:
+                        self.logger('debug', 'Emergency stop flag. Exiting from vacuum.')
+                        raise pins.emergencyStopException()
+            else:
+# Remember to change the error class to a suitable vacuum name and also display what needs to be displayed
+                raise overPressureException()
 
+        except KeyboardInterrupt:
+            self.stopFlag = True
+            self.__vacExit()
+        finally:
+            if self.stopFlag:
+                self.__idle()
+                raise timeOutError()
+            else:
+                self.__vacExit()
+                self.display.lcd_display_string("                    ", 2)
+                self.display.lcd_display_string("                    ", 3)
+    
+
+    @customDecorator.customDecorators.exitAfter('filltimeout')
     def __fillProcess(self):
-        pass
+        # Check if supply pressure is safe to apply
+        try:
+            self.__initiate()
+            supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
+            fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+            if (supplyPressure >= self.constant.PROOFPRESSURE) or\
+            (supplyPressure < self.constant.MINSUPPLYPRESSURE):
+                self.errorFlag = True
+                self.logger('error', 'The supply pressure is out of bounds.')
+                time.sleep(1)
+                self.display.lcd_clear()
+                self.display.lcd_display_string("Error!!!",1)
+                self.display.lcd_display_string("Supply pressure out",2)
+                self.display.lcd_display_string("of bounds",3)
+                time.sleep(5)
+                raise overPressureException()
+            else:
+                self.logger('debug',"The supply pressure is within bounds")
+
+            # Check whether it is the last cycle, if it is, fill to 16 bar rather
+            if self.lastCycleFlag:
+                # Helium fill process
+                if (supplyPressure >= self.constant.LASTFILLPRESSURE and supplyPressure < self.constant.PROOFPRESSURE) and self.stopFlag == 0:
+                    self.logger('debug',"The supply pressure is greater than 16bar for last fill")
+                    self.__heFill()
+                    self.display.lcd_display_string("Last Fill Process...", 2)
+                    self.display.lcd_display_string("Press1:", self.constant.SUPPLYPRESSURECHANNEL)
+                    self.display.lcd_display_string("Press2:", self.constant.VENTPRESSURECHANNEL)
+
+                    while (supplyPressure <= self.constant.LASTFILLPRESSURE) or\
+                    (fillPressure <= self.constant.MAXLOWGAUGE):
+                        supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
+                        fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+                        self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 7)
+                        self.display.lcd_display_string("{} bar ".format(round(fillPressure,2)), self.constant.VENTPRESSURECHANNEL, 7)
+                        if supplyPressure >= self.constant.PROOFPRESSURE:
+                            self.__idle()
+                            raise overPressureException()
+                        elif self.stopFlag:
+                            self.logger('debug', 'Emergency stop flag. Exiting')
+                            raise pins.emergencyStopException()
+                else:
+                    self.logger('debug',"The supply pressure is less than 16bar for last fill")
+                    self.__initiate()
+                    time.sleep(1)
+                    highestPossiblePressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
+                    self.__heFill()
+                    self.display.lcd_display_string("Last Fill Process...", 2)
+                    self.display.lcd_display_string("Press1:", self.constant.SUPPLYPRESSURECHANNEL)
+                    self.display.lcd_display_string("Press2:", self.constant.VENTPRESSURECHANNEL)
+
+                    while (supplyPressure <= highestPossiblePressure) or\
+                    (fillPressure <= self.constant.MAXLOWGAUGE) and self.stopFlag == 0:
+                        supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
+                        fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+                        self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 7)
+                        self.display.lcd_display_string("{} bar ".format(round(fillPressure,2)), self.constant.VENTPRESSURECHANNEL, 7)
+                        if supplyPressure >= self.constant.PROOFPRESSURE:
+                            self.__idle()
+                            raise faultErrorException()
+                        elif self.stopFlag:
+                            self.logger('debug', 'Emergency stop flag. Exiting')
+                            raise pins.emergencyStopException()         
+            else:
+                # Helium fill process
+                self.logger('debug', 'Not the last fill cycle')
+                if fillPressure <= self.constant.FILLPRESSURE and self.stopFlag == 0:
+                    self.__heFill()
+                    self.display.lcd_display_string("Fill Process...", 2)
+                    self.display.lcd_display_string("Press1: {} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL)
+                    self.display.lcd_display_string("Press2: {} bar ".format(round(fillPressure,2)), self.constant.VENTPRESSURECHANNEL)
+                while fillPressure <= self.constant.FILLPRESSURE:
+                    supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
+                    fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+                    self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 7)
+                    self.display.lcd_display_string("{} bar ".format(round(fillPressure,2)), self.constant.VENTPRESSURECHANNEL, 7)
+                    if supplyPressure >= self.constant.PROOFPRESSURE:
+                        self.__idle()
+                        raise overPressureException()
+                    elif self.stopFlag:
+                        self.logger('debug', 'Emergency stop flag. Exiting')
+                        raise pins.emergencyStopException()
+        except KeyboardInterrupt:
+            self.stopFlag = True
+            self.__heFillExit()
+        finally:
+            if self.stopFlag:
+                self.__idle()
+                raise timeOutError()
+            else:
+                # MAKE SURE TO ADD A CHECK FOR WHEN LOW GAUGE == HIGH GAUGE
+                self.__heFillExit()
+                self.display.lcd_display_string("                    ", 2)
+                self.display.lcd_display_string("                    ", 3)
+                self.display.lcd_display_string("                    ", 4)
+
+
         
     
     def __stateMachine(self):
@@ -380,113 +546,11 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
             
             self.__ventProcess()
 
-            # Vacuum process
-            vacuumPressure = self.vacuumConversion(self.readVoltage(self.constant.VACUUMCHANNEL))
-            if (vacuumPressure >= self.constant.VACUUMPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
-                self.display.lcd_display_string("Vacuum Process...", 2)
-                self.__vac()
-                
-            while vacuumPressure >= self.constant.VACUUMPRESSURE:
-                vacuumPressure = self.vacuumConversion(self.readVoltage(self.constant.VACUUMCHANNEL))
-                self.display.lcd_display_string("Vac: {:.2e}".format(vacuumPressure),3)
-                if self.stopFlag:
-                    self.logger('debug', 'Emergency stop flag. Exiting from vacuum.')
-                    raise pins.emergencyStopException()
-                
-            self.__vacExit()
-            self.display.lcd_display_string("                    ", 2)
-            self.display.lcd_display_string("                    ", 3)
+            self.__initVacProcess()
+
+            self.__vacProcess()
     
-            # Check if supply pressure is safe to apply
-            self.__initiate()
-            supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
-            fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-            if (supplyPressure >= self.constant.PROOFPRESSURE) or\
-            (supplyPressure < self.constant.MINSUPPLYPRESSURE):
-                self.errorFlag = True
-                self.logger('error', 'The supply pressure is out of bounds. Allowing user to fix it')
-                time.sleep(1)
-                self.display.lcd_clear()
-                self.display.lcd_display_string("Error!!!",1)
-                self.display.lcd_display_string("Supply pressure out",2)
-                self.display.lcd_display_string("of bounds",3)
-                time.sleep(5)
-                self.display.lcd_clear()
-                self.display.lcd_display_string("Supply P too high...", 1)
-                while (supplyPressure >= self.constant.PROOFPRESSURE) or\
-                (supplyPressure < self.constant.MINSUPPLYPRESSURE):
-                    supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
-                    self.display.lcd_display_string("Press1: {} bar ".format(round(supplyPressure,2)), 2)
-                self.errorFlag = False
-
-                self.display.lcd_clear()
-            else:
-                self.logger('debug',"The supply pressure is within bounds")
-
-            # Check whether it is the last cycle, if it is, fill to 16 bar rather
-            if self.lastCycleFlag:
-                # Helium fill process
-                if (supplyPressure >= self.constant.LASTFILLPRESSURE and supplyPressure < self.constant.PROOFPRESSURE) and self.stopFlag == 0:
-                    self.logger('debug',"The supply pressure is greater than 16bar for last fill")
-                    self.__heFill()
-                    self.display.lcd_display_string("Last Fill Process...", 2)
-
-                    while (supplyPressure <= self.constant.LASTFILLPRESSURE) or\
-                    (fillPressure <= self.constant.MAXLOWGAUGE):
-                        supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
-                        fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-                        self.display.lcd_display_string("Press1: {} bar ".format(round(supplyPressure,2)), 3)
-                        self.display.lcd_display_string("Press2: {} bar ".format(round(fillPressure,2)), 4)
-                        if supplyPressure >= self.constant.PROOFPRESSURE:
-                            self.__idle()
-                            raise overPressureException()
-                        elif self.stopFlag:
-                            self.logger('debug', 'Emergency stop flag. Exiting')
-                            raise pins.emergencyStopException()
-                else:
-                    self.logger('debug',"The supply pressure is less than 16bar for last fill")
-                    self.__initiate()
-                    time.sleep(1)
-                    highestPossiblePressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
-                    self.__heFill()
-                    self.display.lcd_display_string("Last Fill Process...", 2)
-
-                    while (supplyPressure <= highestPossiblePressure) or\
-                    (fillPressure <= self.constant.MAXLOWGAUGE) and self.stopFlag == 0:
-                        supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
-                        fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-                        self.display.lcd_display_string("Press1: {} bar ".format(round(supplyPressure,2)), 3)
-                        self.display.lcd_display_string("Press2: {} bar ".format(round(fillPressure,2)), 4)
-                        if supplyPressure >= self.constant.PROOFPRESSURE:
-                            self.__idle()
-                            raise faultErrorException()
-                        elif self.stopFlag:
-                            self.logger('debug', 'Emergency stop flag. Exiting')
-                            raise pins.emergencyStopException()         
-            else:
-                # Helium fill process
-                self.logger('debug', 'Not the last fill cycle')
-                if fillPressure\
-                <= self.constant.FILLPRESSURE and self.stopFlag == 0:
-                    self.__heFill()
-                    self.display.lcd_display_string("Fill Process...", 2)
-                while fillPressure\
-                <= self.constant.FILLPRESSURE:
-                    supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
-                    fillPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-                    self.display.lcd_display_string("Press1: {} bar ".format(round(supplyPressure,2)), 3)
-                    self.display.lcd_display_string("Press2: {} bar ".format(round(fillPressure,2)), 4)
-                    if supplyPressure >= self.constant.PROOFPRESSURE:
-                        self.__idle()
-                        raise overPressureException()
-                    elif self.stopFlag:
-                        self.logger('debug', 'Emergency stop flag. Exiting')
-                        raise pins.emergencyStopException()
-# MAKE SURE TO ADD A CHECK FOR WHEN LOW GAUGE == HIGH GAUGE
-            self.__heFillExit()
-            self.display.lcd_display_string("                    ", 2)
-            self.display.lcd_display_string("                    ", 3)
-            self.display.lcd_display_string("                    ", 4)
+            self.__fillProcess()
 
             # Increment cycle count
             self.noOfCycles += 1
@@ -494,15 +558,21 @@ class purgeModes(monitor.measure, pins.logicPins, notify.emailNotification, log.
     
     def stateChecks(self):
         self.__initiate()
+
+        self.display.lcd_display_string("No of cycles:", 1)
         self.display.lcd_display_string("Press start", 2)
+        self.display.lcd_display_string("Press1:", 3)
+        self.display.lcd_display_string("Press2:", 4)
+
         supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
 
+
         while (self.startFlag == 0 and self.resetFlag == 0) and (self.stopFlag == 0) :
-            self.display.lcd_display_string("No of cycles: %d  "%self.cycleCount, 1)
+            self.display.lcd_display_string("%d  "%self.cycleCount, 1, 14)
             supplyPressure = self.pressureConversion(self.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
             ventPressure = self.pressureConversion(self.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-            self.display.lcd_display_string("Press1: {} ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL)
-            self.display.lcd_display_string("Press2: {} ".format(round(ventPressure,2)), self.constant.VENTPRESSURECHANNEL)
+            self.display.lcd_display_string("{} ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 8)
+            self.display.lcd_display_string("{} ".format(round(ventPressure,2)), self.constant.VENTPRESSURECHANNEL, 8)
 
         self.display.lcd_clear()
         

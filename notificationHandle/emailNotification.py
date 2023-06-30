@@ -28,9 +28,8 @@ class emailNotification(log.log):
         super().__init__()
         self.fileAtachment = "/home/antlabpi/purgeJig/loggingdebug/logfiles/" + '{}.log'.format(strftime('%d-%m-%y'))
         emailUserPath = '/home/antlabpi/purgeJig/notificationHandle/users.txt'
-        base_path = os.path.dirname(os.path.abspath(__file__))
-        # print(base_path)
-        config_path = os.path.join(base_path, "email.ini")
+        
+        config_path = "/home/antlabpi/purgeJig/notificationHandle/email.ini"
         self.header = 'Content-Disposition', 'attachment; filename="%s"' % self.fileAtachment
 
         # get the config
