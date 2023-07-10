@@ -1,0 +1,9 @@
+# sudo apt install git
+# sudo apt install python3-pip
+# pip3 install -r List_of_dependencies.txt
+
+numpy>=1.8.0
+smbus2>=0.4.2
+smbus
+RPi.GPIO>=0.7.1
+screen

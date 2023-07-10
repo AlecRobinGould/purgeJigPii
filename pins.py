@@ -30,7 +30,7 @@ class emergencyStopException(Exception):
     """
     Class for error exception
     """
-    def __init__(self, message='Exit rasied though a stop flag'):
+    def __init__(self, message='Exit raised though a stop flag'):
         # Call the base class constructor with the parameters it needs
         super(emergencyStopException, self).__init__(message)
 

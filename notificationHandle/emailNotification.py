@@ -26,16 +26,21 @@ class emailNotification(log.log):
 
     def __init__(self):
         super().__init__()
-        self.fileAtachment = "/home/antlabpi/purgeJig/loggingdebug/logfiles/" + '{}.log'.format(strftime('%d-%m-%y'))
-        emailUserPath = '/home/antlabpi/purgeJig/notificationHandle/users.txt'
-        
-        config_path = "/home/antlabpi/purgeJig/notificationHandle/email.ini"
-        self.header = 'Content-Disposition', 'attachment; filename="%s"' % self.fileAtachment
+        basePath = os.path.dirname(os.path.abspath(__file__))
 
+        emailUserPath = basePath + '/users.txt'
+        configFile = basePath + "/email.ini"
+        os.chdir('./')
+        basePath = os.getcwd()
+
+        self.fileAtachment = basePath + "/loggingdebug/logfiles/" + '{}.log'.format(strftime('%d-%m-%y'))
+
+        self.header = 'Content-Disposition', 'attachment; filename="%s"' % self.fileAtachment
+        
         # get the config
-        if os.path.exists(config_path):
+        if os.path.exists(configFile):
             cfg = ConfigParser()
-            cfg.read(config_path)
+            cfg.read(configFile)
         else:
             # print("Config not found! Exiting!")
             # sys.exit(1)
