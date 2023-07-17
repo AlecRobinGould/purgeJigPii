@@ -30,10 +30,10 @@ class emailNotification(log.log):
 
         emailUserPath = basePath + '/users.txt'
         configFile = basePath + "/email.ini"
-        os.chdir('./')
-        basePath = os.getcwd()
+        # os.chdir('./')
+        # basePath = os.getcwd()
 
-        self.fileAtachment = basePath + "/loggingdebug/logfiles/" + '{}.log'.format(strftime('%d-%m-%y'))
+        self.fileAtachment = self.logpath + self.logfile
 
         self.header = 'Content-Disposition', 'attachment; filename="%s"' % self.fileAtachment
         
@@ -87,9 +87,10 @@ class emailNotification(log.log):
             encoders.encode_base64(attachment)
             attachment.add_header(*self.header)
             self.msg.attach(attachment)
-        except IOError:
+        except:
             self.msg = "Error opening attachment file %s" % self.fileAtachment
             self.logger('error', self.msg)
+            return False
             # print(self.msg)
             # sys.exit(1)
 
@@ -99,6 +100,9 @@ class emailNotification(log.log):
         server.starttls()
         server.send_message(self.msg)
         server.quit()
+        self.msg = "Email sent successfully"
+        self.logger('debug', self.msg)
+        return True
 
 def main():
     # cc_emails = ["someone@gmail.com"]

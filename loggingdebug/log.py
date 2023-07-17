@@ -8,7 +8,8 @@ class log():
 
     def __init__(self):    
         # set up logging to file - see previous section for more details
-        self.logpath = '/home/antlabpi/purgeJig/purgeJigPii/loggingdebug/logfiles/'
+        basePath = os.path.dirname(os.path.abspath(__file__))
+        self.logpath = basePath + '/logfiles/'
         self.logfile = '{}.log'.format(strftime('%d-%m-%y'))
         self.statefile = 'state.log'
         logging.basicConfig(level=logging.DEBUG,

@@ -28,7 +28,7 @@ class measure(pins.logicPins):
     """Class for taking measurements, including conversions"""
     def __init__(self):
         
-        super().__init__() # This initialises the inherited class such that an instance does not
+        super().__init__() # This initialises the inherited class' constructor such that an instance does not
                            # to be explicitly created, including the log class.
         self.logger("debug", "Measure constructor has run")
 
@@ -61,12 +61,14 @@ class measure(pins.logicPins):
             0.085746, 10.11756952,      # 1.011757E+01
             0.068597, 69.81017169,      # 6.981017E+01
             0.051448, 481.6828844,      # 4.816829E+02
-            0.050000, 1026.000000       # 1.026000E+03
+            0.050000, 1026.000000,      # 1.026000E+03
+            0.000000, -1
         ]
         # Initialise the ADC with default values
         try:
             self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=16, bus=1)
         except:
+            # Juuuuust incase
             try:
                 self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=18, bus=1)
             except:
@@ -130,9 +132,11 @@ class measure(pins.logicPins):
     
     def vacuumConversion(self, voltage):
         # print("Voltage: {}".format(voltage))
-        if voltage > self.vacuumLookUp[0]:
+        if voltage <= self.vacuumLookUp[40]:
+            return self.vacuumLookUp[41]
+        elif voltage > self.vacuumLookUp[0]:
             return self.vacuumLookUp[1]
-        elif voltage < self.vacuumLookUp[38]:
+        elif voltage < self.vacuumLookUp[38] and voltage > self.vacuumLookUp[40]:
             return self.vacuumLookUp[39]
         else:
             for v in range(len(self.vacuumLookUp)):
@@ -166,24 +170,27 @@ def main():
         while True:
             # x = read.vacuumConversion(read.readVoltage(1))
             # read.display.lcd_display_string("sensor {}: ".format(1)+ "{:.2e}".format(x),1)
+            i = 1
+            x = read.vacuumConversion(read.readVoltage(i))
+            read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e} ".format(x),i)
             
-            for i in range(1,5):
-                # x = round(read.readVoltage(i), 2)
-                # read.display.lcd_display_string("                    ",i)
-                if i == 1:
-                    x = read.vacuumConversion(read.readVoltage(i))
-                    read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e}".format(x),i)
-                elif i == 2:
-                    read.batteryStateSet(1,1)
-                    x = read.readVoltage(i)
-                    read.display.lcd_display_string("Batt: "+str(read.stateOfCharge(x))+"% ",i)
-                    read.batteryStateSet(1,0)
-                elif i == 3:
-                    x = read.pressureConversion(read.readVoltage(i), "0-34bar")
-                    read.display.lcd_display_string("sensor {}: ".format(round(x,2)),i)
-                elif i == 4:
-                    x = read.pressureConversion(read.readVoltage(i), "0-10bar")
-                    read.display.lcd_display_string("sensor {}: ".format(round(x,2)),i)
+            # for i in range(1,5):
+            #     # x = round(read.readVoltage(i), 2)
+            #     # read.display.lcd_display_string("                    ",i)
+            #     if i == 1:
+            #         x = read.vacuumConversion(read.readVoltage(i))
+            #         read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e}".format(x),i)
+            #     elif i == 2:
+            #         read.batteryStateSet(1,1)
+            #         x = read.readVoltage(i)
+            #         read.display.lcd_display_string("Batt: "+str(read.stateOfCharge(x))+"% ",i)
+            #         read.batteryStateSet(1,0)
+            #     elif i == 3:
+            #         x = read.pressureConversion(read.readVoltage(i), "0-34bar")
+            #         read.display.lcd_display_string("sensor {}: ".format(round(x,2)),i)
+            #     elif i == 4:
+            #         x = read.pressureConversion(read.readVoltage(i), "0-10bar")
+            #         read.display.lcd_display_string("sensor {}: ".format(round(x,2)),i)
             
                     
     except KeyboardInterrupt:

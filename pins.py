@@ -59,18 +59,18 @@ class logicPins(log.log):
         # Constants... python does not like real constants (im not creating constants.py) - pls dont change this
         self.deBounce = 100   # time in milliseconds
         # Pin numbers
-        self.fillValve2 = 23
-        self.ventValve = 24
+        self.fillValve = 23
+        self.ventValve1 = 24
         self.vacValve = 25
         self.stat1Mon = 8
         self.nCycleButton = 7
         self.stat2Mon = 1
         self.enCharge = 20
-        self.enFan = 21
+        self.enBuzzer = 21
 
         self.nStartButton = 4
         self.enStepMotor = 27
-        self.fillValve1 = 22
+        self.ventValve2 = 22
         self.nStopButton = 5
         self.nResetButton = 6
         self.enBattery = 19
@@ -90,14 +90,14 @@ class logicPins(log.log):
 
         # time.sleep(1.5)
         # Output pins
-        GPIO.setup(self.fillValve2,GPIO.OUT)
-        GPIO.setup(self.ventValve,GPIO.OUT)
+        GPIO.setup(self.fillValve,GPIO.OUT)
+        GPIO.setup(self.ventValve1,GPIO.OUT)
         GPIO.setup(self.vacValve,GPIO.OUT)
         GPIO.setup(self.enCharge,GPIO.OUT)
-        GPIO.setup(self.enFan,GPIO.OUT)
+        GPIO.setup(self.enBuzzer,GPIO.OUT)
 
         GPIO.setup(self.enStepMotor,GPIO.OUT)
-        GPIO.setup(self.fillValve1,GPIO.OUT)
+        GPIO.setup(self.ventValve2,GPIO.OUT)
         GPIO.setup(self.enBattery,GPIO.OUT)
         GPIO.setup(self.enPump,GPIO.OUT)
 
@@ -164,13 +164,17 @@ class logicPins(log.log):
         Internal method for setting an idle mode
         """
         print("idle")
-        GPIO.output(self.fillValve2, 0)
-        GPIO.output(self.ventValve, 0)
+        GPIO.output(self.fillValve, 0)
+        GPIO.output(self.ventValve1, 0)
         GPIO.output(self.vacValve, 0)
-        GPIO.output(self.enFan, 0)
+        # GPIO.output(self.enBuzzer, 0)
         GPIO.output(self.enStepMotor, 0)
-        GPIO.output(self.fillValve1, 0)
+        GPIO.output(self.ventValve2, 0)
         GPIO.output(self.enPump, 0)
+
+    def setIdle(self):
+        # This is a hack...
+        self.__idle()
 
     def __cycleCallback(self, channel):
         """Internal method for incrementing a button press counter"""
@@ -212,7 +216,7 @@ class logicPins(log.log):
         else:
             self.stopFlag = 1
             self.startFlag = 0
-            time.sleep(0.5)
+            time.sleep(0.3)
             self.display.lcd_clear()
             self.display.lcd_display_string("E-stop pressed", 1)
             self.display.lcd_display_string("Press reset to", 2)
@@ -261,7 +265,6 @@ class logicPins(log.log):
         GPIO.output(self.enCharge, chargeEnable)
 
 
-"""
 def main():
     
     # Main program function
@@ -274,12 +277,21 @@ def main():
     test = logicPins()
     count += 1
 
+    # self.fillValve = 23
+    # self.ventValve1 = 24
+    # self.vacValve = 25
+    # self.enBuzzer = 21
+    # self.enStepMotor = 27
+    # self.ventValve2 = 22
+    # self.enPump = 26
+
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(19,GPIO.OUT)
-    GPIO.setup(test.enStepMotor,GPIO.OUT)
-
     GPIO.output(19, 1)
-    GPIO.output(test.enStepMotor,1)
+
+
+    GPIO.setup(test.enBuzzer,GPIO.OUT)
+    GPIO.output(test.enBuzzer,0)
 
     try:
         while True:
@@ -292,4 +304,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-"""
