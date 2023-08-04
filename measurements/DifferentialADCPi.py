@@ -9,6 +9,7 @@ Requires smbus2 or python smbus to be installed
 from __future__ import absolute_import, division, print_function, \
                                                     unicode_literals
 try:
+    # from smbus import SMBus
     from smbus2 import SMBus
 except ImportError:
     try:

@@ -19,7 +19,7 @@ class log():
                             filemode='a')
         # define a Handler which writes INFO messages or higher to the sys.stderr
         console = logging.StreamHandler()
-        console.setLevel(logging.INFO)
+        console.setLevel(logging.WARNING)
         # set a format which is simpler for console use
         formatter = logging.Formatter('%(name)-12s: %(levelname)-8s %(message)s')
         # tell the handler to use this format
@@ -44,8 +44,8 @@ class log():
         elif logtype == 'info':
             logging.info(message)
         elif logtype == 'debug':
-            print('logtype is: {}'.format(logtype))
-            print('message is: {}'.format(message))
+            # print('logtype is: {}'.format(logtype))
+            # print('message is: {}'.format(message))
             logging.debug(message)
         else:
             logging.warning('Logger has been used out of condition')

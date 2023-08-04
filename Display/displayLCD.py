@@ -6,7 +6,8 @@ import re
 # LCD Address
 ADDRESS = 0x27
 
-import smbus
+# import smbus
+from smbus2 import SMBus
 from time import sleep
 
 class i2c_device:
@@ -46,7 +47,7 @@ class i2c_device:
                           break
       
       try:
-          self.bus = smbus.SMBus(I2CBUS)
+          self.bus = SMBus(I2CBUS)
       except IOError:
           print("You likely didnt enable I2C yet")
           raise 'Could not open the I2C bus'

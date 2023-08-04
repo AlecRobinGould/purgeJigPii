@@ -9,3 +9,5 @@ numpy>=1.8.0
 smbus2>=0.4.2
 smbus
 RPi.GPIO>=0.7.1
+multiprocess
+psutil

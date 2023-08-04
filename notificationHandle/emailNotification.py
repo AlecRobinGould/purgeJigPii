@@ -22,10 +22,10 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate
 
-class emailNotification(log.log):
+class emailNotification(object):
 
     def __init__(self):
-        super().__init__()
+        self.mailDebug = log.log()
         basePath = os.path.dirname(os.path.abspath(__file__))
 
         emailUserPath = basePath + '/users.txt'
@@ -33,18 +33,19 @@ class emailNotification(log.log):
         # os.chdir('./')
         # basePath = os.getcwd()
 
-        self.fileAtachment = self.logpath + self.logfile
+        self.fileAtachment = self.mailDebug.logpath + self.mailDebug.logfile
 
         self.header = 'Content-Disposition', 'attachment; filename="%s"' % self.fileAtachment
         
         # get the config
+        cfg = ConfigParser()
         if os.path.exists(configFile):
-            cfg = ConfigParser()
+            
             cfg.read(configFile)
         else:
             # print("Config not found! Exiting!")
             # sys.exit(1)
-            self.logger('error', 'Email config file not found')
+            self.mailDebug.logger('error', 'Email config file not found')
 
         # extract server and from_addr from config
         self.host = cfg.get("smtp", "server")
@@ -53,7 +54,7 @@ class emailNotification(log.log):
         # create the message
         self.msg = MIMEMultipart()
         self.msg["From"] = fromAddr
-        self.logger('debug', 'Email is being sent from: {}'.format(self.msg["From"]))
+        self.mailDebug.logger('debug', 'Email is being sent from: {}'.format(self.msg["From"]))
 
         with open(emailUserPath, 'r') as usersFile: #read the login details
             toSendTo = ''
@@ -64,7 +65,7 @@ class emailNotification(log.log):
                     toSendTo = toSendTo + line.strip()
         
         self.msg['To'] = toSendTo
-        self.logger('debug', 'Email is being sent to: {}'.format(self.msg["To"]))
+        self.mailDebug.logger('debug', 'Email is being sent to: {}'.format(self.msg["To"]))
         # self.msg["To"] = ', '.join(to_emails)
         # self.msg["cc"] = ', '.join(cc_emails)
 
@@ -73,7 +74,7 @@ class emailNotification(log.log):
         Send an email with an attachment
         """
         # create the message
-        self.logger('debug', 'An email has been requested')
+        self.mailDebug.logger('debug', 'An email has been requested')
         self.msg["Subject"] = subject
         self.msg["Date"] = formatdate(localtime=True)
         if bodyText:
@@ -89,7 +90,7 @@ class emailNotification(log.log):
             self.msg.attach(attachment)
         except:
             self.msg = "Error opening attachment file %s" % self.fileAtachment
-            self.logger('error', self.msg)
+            self.mailDebug.logger('error', self.msg)
             return False
             # print(self.msg)
             # sys.exit(1)
@@ -101,7 +102,7 @@ class emailNotification(log.log):
         server.send_message(self.msg)
         server.quit()
         self.msg = "Email sent successfully"
-        self.logger('debug', self.msg)
+        self.mailDebug.logger('debug', self.msg)
         return True
 
 def main():

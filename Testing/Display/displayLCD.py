@@ -5,7 +5,8 @@ import re
 ADDRESS = 0x27
 
 
-import smbus
+# import smbus2
+from smbus2 import SMBus
 from time import sleep
 
 class i2c_device:
@@ -45,7 +46,7 @@ class i2c_device:
                           break
       
       try:
-          self.bus = smbus.SMBus(I2CBUS)
+          self.bus = SMBus(1)
       except IOError:
           raise 'Could not open the I2C bus'
 
@@ -166,6 +167,10 @@ class lcd:
   
    # put string function with optional char positioning
    def lcd_display_string(self, string, line=1, pos=0):
+    
+   #  print(string)
+   #  print(line)
+   #  print(pos)
     if line == 1:
       pos_new = pos
     elif line == 2:
@@ -179,6 +184,8 @@ class lcd:
 
     for char in string:
       self.lcd_write(ord(char), Rs)
+
+    return True
 
    # clear lcd and set to home
    def lcd_clear(self):

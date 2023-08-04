@@ -7,31 +7,40 @@ Check "List of dependencies.txt" for required modules
 =====================================================
 """
 import RPi.GPIO as GPIO
-
-try: 
-    from purgeJig import pins
-    import DifferentialADCPi
+try:
+    import sys
+    sys.path.append('.')
+    # Can comment 1 below out
+    import pins
+    import time
+    from loggingdebug import log
+    from measurements import DifferentialADCPi
+    # import pins
+    # from Display import displayLCD
 except ImportError:
-    print("Failed to import pins from python system path")
-    try:
-        import sys
-        sys.path.append('.')
-        # from purgeJig import pins
-        from measurements import DifferentialADCPi
-        import pins
-        from Display import displayLCD
-    except ImportError:
-        raise ImportError(
-            "Failed to import library from parent folder")
+    raise ImportError(
+        "Failed to import library from parent folder")
 
-class measure(pins.logicPins):
+class measure(object):
     """Class for taking measurements, including conversions"""
-    def __init__(self):
-        
-        super().__init__() # This initialises the inherited class' constructor such that an instance does not
-                           # to be explicitly created, including the log class.
-        self.logger("debug", "Measure constructor has run")
+    def __init__(self, statMon1, statMon2):
+        """
+         Class constructor - Initialise measurements class
+         :param statMon1: receives monitoring pin number when measure class in instantiated
+         :type int:
+         :param statMon2: receives monitoring pin number when measure class in instantiated
+         :type int: 
+         """
 
+        # self.gpio = pins.logicPins()
+
+        self.logthis = log.log()
+
+        self.statMon1 = statMon1
+        self.statMon2 = statMon2
+
+        # self.logthis.logger("debug", "Measure constructor has run")
+        
         self.SOCLookUp = [
             0.96637, 100,
             0.94336, 90,
@@ -73,7 +82,7 @@ class measure(pins.logicPins):
                 self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=18, bus=1)
             except:
                 self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x68, rate=18, bus=1)
-            print("ADC I2C adress no valid")
+            # print("ADC I2C adress no valid")
 
         # Setting additional adc parameters
         self.adc.set_pga(1)
@@ -146,33 +155,64 @@ class measure(pins.logicPins):
                             ((voltage - self.vacuumLookUp[i+2]) / (self.vacuumLookUp[i] - self.vacuumLookUp[i+2])))
                 
     def statusMonitor(self):
-        stat1MonValue = GPIO.input(self.stat1Mon)
-        stat2MonValue = GPIO.input(self.stat2Mon)
+        stat1MonValue = GPIO.input(self.statMon1)
+        stat2MonValue = GPIO.input(self.statMon2)
+
+        # stat1MonValue = 0
+        # stat2MonValue = 0
+
         if stat1MonValue:
             if stat2MonValue:
-                self.logger('debug', 'Battery is charged')
+                # self.logthis.logger('debug', 'Battery is charged')
                 return 'Charged'
             else:
-                self.logger('debug', 'Battery is charging')
+                # self.logthis.logger('debug', 'Battery is charging')
                 return 'Charging'
         else:
             if stat2MonValue:
-                self.logger('warning', 'Over-voltage or over-temperature fault')
+                # self.logthis.logger('warning', 'Over-voltage or over-temperature fault')
                 return 'Fault'
             else:
-                self.logger('error', 'Over-current or charge timeout fault')
+                # self.logthis.logger('error', 'Over-current or charge timeout fault')
                 return 'Major fault'
 
 def main():
     read = measure()
-    read.batteryStateSet(1, 0)
+    # pin = pins.logicPins()
+    # pin.batteryStateSet(1, 0)
+
     try:
+        sleeptime = 0.5
         while True:
             # x = read.vacuumConversion(read.readVoltage(1))
             # read.display.lcd_display_string("sensor {}: ".format(1)+ "{:.2e}".format(x),1)
-            i = 1
-            x = read.vacuumConversion(read.readVoltage(i))
-            read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e} ".format(x),i)
+
+            print(read.statusMonitor())
+            i = 2
+            read.pin.batteryStateSet(1, 1)
+            time.sleep(sleeptime)
+            x = read.readVoltage(i)
+            print(read.statusMonitor())
+            # print("Voltage before charge enable: %d", x)
+
+
+            read.pin.batteryStateSet(1, 0)
+            time.sleep(sleeptime)
+            p = read.readVoltage(i)
+            # print("Voltage after charge enable: %d", p)
+            print(round(p-x, 3))
+            print(read.statusMonitor())
+
+            
+            # time.sleep(0.2)
+            if (round((p - x), 3)) > 0:
+                print("Eksdom is on")
+            else:
+                print("Eksdoms is off")
+
+
+            
+            # read.display.lcd_display_string("sensor {}: ".format(i)+ "{:.2e} ".format(x),i)
             
             # for i in range(1,5):
             #     # x = round(read.readVoltage(i), 2)
@@ -195,7 +235,11 @@ def main():
                     
     except KeyboardInterrupt:
         print("\nExited measurements through keyboard interupt")
+        # GPIO.cleanup()
+
+    finally:
         GPIO.cleanup()
+
     
 if __name__ == "__main__":
     main()
