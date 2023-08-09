@@ -49,21 +49,24 @@ class Process(multiprocessing.Process):
         return self._exception
 
 
-class Task_1:
-    def do_something(self,z , lock, shared, values, queue):
+class Task_1(object):
+    def __init__(self, z):
+        self.z = z
+
+    def do_something(self, lock, shared, values, queue):
         # z.lcd_display_string("Hello")
         # print("task 1")
         with shared.get_lock():
             errorFlag = shared[0]
         with lock:
-            z.lcd_display_string("Press1:", 3)
+            self.z.lcd_display_string("Press1:", 3)
         while not errorFlag:
             print("there")
             with shared.get_lock():
                 errorFlag = shared[0]
             with values.get_lock():
                 with lock:
-                    z.lcd_display_string("{} bar ".format(round(values[0],2)), 3, 7)
+                    self.z.lcd_display_string("{} bar ".format(round(values[0],2)), 3, 7)
         # queue.put(dict(users=2))
         # with lock:
         #     for x in range(len(shared)):
@@ -71,17 +74,20 @@ class Task_1:
 
 # Use this task to check for E-vent case (pretty much if supp press > 23 bar)
 class Task_2:
+    def __init__(self, locks):
+        self.lock = locks
+
     def do_something(self, z, lock, shared, values, queue):
         # sleep(5)
         # print("task 2")
-        with lock:
+        with self.lock:
             supplyPressure = z.pressureConversion(z.readVoltage(3), "0-34bar")
         with values.get_lock():
             values[0] = supplyPressure
 
         while supplyPressure < 23:
             print("here")
-            with lock:
+            with self.lock:
                 supplyPressure = z.pressureConversion(z.readVoltage(3), "0-34bar")
             with values.get_lock():
                 values[0] = supplyPressure   
@@ -94,8 +100,11 @@ class Task_2:
 
 def main():
     try:
-        task_1 = Task_1()
-        task_2 = Task_2()
+        x = monitor.measure(1,2)
+        display = displayLCD.lcd()
+        lock3 = multiprocessing.Lock()
+        task_1 = Task_1(display)
+        task_2 = Task_2(lock3)
 
         # Example of multiprocessing which is used:
         # https://eli.thegreenplace.net/2012/01/16/python-parallelizing-cpu-bound-tasks-with-multiprocessing/
@@ -104,13 +113,13 @@ def main():
 
         # lock = multiprocessing.Lock()
         # lock2 = multiprocessing.Lock()
-        lock3 = multiprocessing.Lock()
+        
         shared = multiprocessing.Array('b', [False, False, False, False], lock=True)
         values = multiprocessing.Array('d', [0.0, 0.0, 0.0, 0.0], lock=True)
 
         ###########################################
-        x = monitor.measure(1,2)
-        display = displayLCD.lcd()
+        
+        
         # vacuumPressure = x.vacuumConversion(x.readVoltage(3))
         with lock3:
             display.lcd_display_string("Hello")
@@ -118,7 +127,7 @@ def main():
 
 
         task_1_process = Process(
-            target=task_1.do_something, args=(display,lock3, shared, values)
+            target=task_1.do_something, args=(lock3, shared, values)
             ,kwargs=dict(queue=task_1_queue))
 
         task_2_process = Process(
@@ -153,12 +162,15 @@ def main():
                 # Do not wait until task_1 is finished
                 task_1_process.terminate()
 
-                while True:
-                    print("correct something")
+                # while True:
+                    # print("correct something")
                 # raise ChildProcessError(task_2_traceback)
 
         task_1_process.join()
         task_2_process.join()
+
+        del shared
+        del values
 
         task_1_results = task_1_queue.get()
         task_2_results = task_2_queue.get()
