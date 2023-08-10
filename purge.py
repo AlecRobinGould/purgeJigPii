@@ -195,16 +195,26 @@ class purgeModes(pins.logicPins):
             # print("Config not found! Exiting!")
             # sys.exit(1)
             self.purgeLog.logger('error', 'Timeout config file not found')
+            with self.i2cLock:
+                self.display.lcd_clear()
+                self.display.lcd_display_string("Error 20",1)
+                self.display.lcd_display_string("Timeout",1)
+                self.display.lcd_display_string("Config file failed!",3)
+                self.display.lcd_display_string("Please check file.",4)
+            
+            self.__beepOn()
+            time.sleep(10)
+            self.__beepOff()
+            
 
         
         # self.parallelProcessQueue()
+        """Dont think we need this anymore"""
         self.p = Process(target=self.__fixableError)
     
     def eVentHandle(self):
         self.__emergencyVent()
         self.purgeLog.logger('error','Device is emergency venting')
-        print("E-VENT")
-        # with self.i2cLock:
         self.display.lcd_clear()
         self.display.lcd_display_string("Error 10",1)
         self.display.lcd_display_string("Supply over pressure",2)
@@ -212,7 +222,6 @@ class purgeModes(pins.logicPins):
         self.display.lcd_display_string("Please lower supply!",4)
         supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
         while supplyPressure > 23:
-            print("Supply is still high")
             # with self.i2cLock:
             supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
             self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 7)
@@ -220,8 +229,6 @@ class purgeModes(pins.logicPins):
         time.sleep(0.5)
         supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
         if supplyPressure < 23:
-
-            print("Supply fixed")
             self.purgeLog.logger('debug','Device supply pressure is safe.')
             # Pressure has been corrected
             self.__idle()
@@ -232,7 +239,6 @@ class purgeModes(pins.logicPins):
             self.__emergencyVent()
             self.purgeLog.logger('error','Device is emergency venting again.')
             while supplyPressure > 23:
-                print("Supply is still high")
                 # with self.i2cLock:
                 supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
                 self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 7)
@@ -387,7 +393,11 @@ class purgeModes(pins.logicPins):
     def checkHealth(self):
         system = checkHealth.healthyPi()
         metrics = system.checkPi()
+        with self.i2cLock:
+            self.display.lcd_display_string("Health check in ",1)
+            # self.display.lcd_display_string("                    ",4)
         # I put this first so the logs make sense if email fails
+        time.sleep(1)
         if metrics["Network"]:
             self.purgeLog.logger('debug', 'RPi network is goood.')
         else:
@@ -441,6 +451,32 @@ class purgeModes(pins.logicPins):
                     self.display.lcd_display_string("Storage full",3)
                     self.display.lcd_display_string("Purge will cont.",4)
             
+            time.sleep(10)
+            with self.i2cLock:
+                self.display.lcd_clear()
+
+        # Check logfile
+        if self.purgeLog.checkLogFile():
+            self.purgeLog.logger('debug', 'Logfile is there and in good order.')
+        else:
+            # Possibly fruitless. might aswell try
+            self.purgeLog.logger('warning', 'Logfile is not working.')
+            with self.i2cLock:
+                self.display.lcd_clear()
+            if self.mail.sendMailAttachment(
+                subject = "Purgejig bot has a bad message for you!",
+                bodyText = "Dear Purgejig user,\n\nLog file not found, or accessable!.\n\nKind regards,\nPurgejig bot"):
+                with self.i2cLock:
+                    self.display.lcd_display_string("Error 21",1)
+                    self.display.lcd_display_string("                    ",2)
+                    self.display.lcd_display_string("Logging fault",3)
+                    self.display.lcd_display_string("Purge will cont.",4)
+            else:
+                with self.i2cLock:
+                    self.display.lcd_display_string("Error 16, 21:",1)
+                    self.display.lcd_display_string("Email fail , and",2)
+                    self.display.lcd_display_string("Storage full",3)
+                    self.display.lcd_display_string("Purge will cont.",4)
             time.sleep(10)
             with self.i2cLock:
                 self.display.lcd_clear()
@@ -599,20 +635,23 @@ class purgeModes(pins.logicPins):
     @customDecorator.customDecorators.exitAfter('venttimeout')
     def __ventProcess(self):
         self.state = 'vent'
+        ventType = 'None'
         try:
             # Venting process
             with self.i2cLock:
                 ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
             if (ventPressure < 0) and self.stopFlag == 0 and self.resetFlag == 0:
                 # Insert error here
+                ventType = 'Vacuum'
                 self.__vent()
                 with self.i2cLock:
                     self.display.lcd_display_string("Venting vacuum...", 2)
             elif (ventPressure >= self.constant.VENTPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
+                ventType = 'Pressurised'
                 self.__vent()
                 with self.i2cLock:
                     self.display.lcd_display_string("Venting Process...", 2)
-            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < -0.5:
+            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < -0.1:
                 with self.i2cLock:
                     ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
                     self.display.lcd_display_string("Press2: {} bar ".format(round(ventPressure,2)), 3)
@@ -621,7 +660,8 @@ class purgeModes(pins.logicPins):
                     self.stopFlag = self.sharedBoolFlags[1]
                 if self.stopFlag:
                     self.purgeLog.logger('debug', 'Emergency stop flag. Exiting from vent.')
-                    raise pins.emergencyStopException()
+                    break
+                    # raise pins.emergencyStopException() # this is a hack. Fix later
         except KeyboardInterrupt:
         
             # self.stopFlag = True
@@ -637,10 +677,22 @@ class purgeModes(pins.logicPins):
                 with self.i2cLock:
                     self.display.lcd_clear()
                 time.sleep(0.1)
-                with self.i2cLock:
-                    self.display.lcd_display_string("Error 8:",1)
-                    self.display.lcd_display_string("Vent timeout",2)
-                    self.display.lcd_display_string("Press Reset",4)
+                if ventType == 'Pressurised':
+                    with self.i2cLock:
+                        self.display.lcd_display_string("Error 8:",1)
+                        self.display.lcd_display_string("Vent timeout",2)
+                        self.display.lcd_display_string("Press Reset",4)
+                elif ventType == 'None':
+                    with self.i2cLock:
+                        self.display.lcd_display_string("Error 3:",1)
+                        self.display.lcd_display_string("Vent timeout",2)
+                        self.display.lcd_display_string("Sensor 2 fault",3)
+                        self.display.lcd_display_string("Press Reset",4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_display_string("Error unknown:",1)
+                        self.display.lcd_display_string("Vent timeout",2)
+                        self.display.lcd_display_string("Press Reset",4)
                 raise timeOutError()
             else:
                 self.__ventExit()
@@ -651,50 +703,66 @@ class purgeModes(pins.logicPins):
     @customDecorator.customDecorators.exitAfter('initialvactimeout')
     def __initVacProcess(self):
         self.state = 'initvacuum'
-        try:
+        manifoldPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+        if manifoldPressure > 0.5:
+            self.__idle()
+            self.purgeLog.logger('error', 'Manifold pressure too high to vacuum.')
             with self.i2cLock:
-                self.display.lcd_display_string("Initisalising vac...", 2)
-                self.display.lcd_display_string("Vac: ",3)
-            self.__vacInit()
-            with self.i2cLock:
-                vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
-            while vacuumPressure >= self.constant.INITVACUUMPRESSURE:
+                self.display.lcd_clear()
+                self.display.lcd_display_string("Error 19:",1)
+                self.display.lcd_display_string("Vent failure",2)
+                self.display.lcd_display_string("Press Reset",4)
+            with self.sharedBoolFlags.get_lock():
+                self.sharedBoolFlags[3] = True
+            raise overPressureException()
+        else:
+            try:
+                with self.i2cLock:
+                    self.display.lcd_display_string("Initisalising vac...", 2)
+                    self.display.lcd_display_string("Vac: ",3)
+                self.__vacInit()
                 with self.i2cLock:
                     vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
-                with self.i2cLock:
-                    self.display.lcd_display_string("{:.2e}".format(vacuumPressure),3,5)
-                if self.stopFlag:
-                    self.purgeLog.logger('debug', 'Emergency stop flag. Exiting from initial vacuum.')
-                    raise pins.emergencyStopException()
-        except KeyboardInterrupt:
-        
-            self.timeoutFlag = True
-            # self.stopFlag = True
-            self.__vacExit()
-        finally:
-            with self.sharedBoolFlags.get_lock():
-                self.errorFlag = self.sharedBoolFlags[3]
-            if self.timeoutFlag:
-                self.__idle()
-                self.purgeLog.logger('error', 'Initialising vacuum timeout errror!')
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 5:",1)
-                    self.display.lcd_display_string("Initial vac timeout",2)
-                    self.display.lcd_display_string("Press Reset",4)
-                with self.sharedBoolFlags.get_lock():
-                    self.sharedBoolFlags[3] = True
-                # self.errorFlag = True
-                raise timeOutError()
-            elif self.stopFlag:
-                pass
-            elif self.errorFlag:
-                pass
-            else:
+                while vacuumPressure >= self.constant.INITVACUUMPRESSURE:
+                    with self.i2cLock:
+                        vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
+                    with self.i2cLock:
+                        self.display.lcd_display_string("{:.2e}".format(vacuumPressure),3,5)
+
+                    with self.sharedBoolFlags.get_lock():
+                        self.stopFlag = self.sharedBoolFlags[1]
+                    if self.stopFlag:
+                        self.purgeLog.logger('debug', 'Emergency stop flag. Exiting from initial vacuum.')
+                        break
+                        # raise pins.emergencyStopException()
+            except KeyboardInterrupt:
+                self.timeoutFlag = True
+                # self.stopFlag = True
                 self.__vacExit()
-                with self.i2cLock:
-                    self.display.lcd_display_string("                    ", 2)
-                    self.display.lcd_display_string("                    ", 3)
+            finally:
+                with self.sharedBoolFlags.get_lock():
+                    self.errorFlag = self.sharedBoolFlags[3]
+                if self.timeoutFlag:
+                    self.__idle()
+                    self.purgeLog.logger('error', 'Initialising vacuum timeout errror!')
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 5:",1)
+                        self.display.lcd_display_string("Initial vac timeout",2)
+                        self.display.lcd_display_string("Press Reset",4)
+                    with self.sharedBoolFlags.get_lock():
+                        self.sharedBoolFlags[3] = True
+                    # self.errorFlag = True
+                    raise timeOutError()
+                elif self.stopFlag:
+                    pass
+                elif self.errorFlag:
+                    pass
+                else:
+                    self.__vacExit()
+                    with self.i2cLock:
+                        self.display.lcd_display_string("                    ", 2)
+                        self.display.lcd_display_string("                    ", 3)
             
     @customDecorator.customDecorators.exitAfter('vacuumtimeout')
     def __vacProcess(self):
@@ -734,7 +802,8 @@ class purgeModes(pins.logicPins):
                         self.stopFlag = self.sharedBoolFlags[1]
                     if self.stopFlag:
                         self.purgeLog.logger('debug', 'Emergency stop flag. Exiting from vacuum.')
-                        raise pins.emergencyStopException()
+                        break
+                        # raise pins.emergencyStopException() # this is a hack. fix later
             else:
 # Remember to change the error class to a suitable vacuum name and also display what needs to be displayed
                 self.purgeLog.logger('error', 'Vacuum load not detected. The pressure did not increase when solenoid opened!')
@@ -820,7 +889,8 @@ class purgeModes(pins.logicPins):
                             # raise overPressureException()
                         elif self.stopFlag:
                             self.purgeLog.logger('debug', 'Emergency stop flag. Exiting')
-                            raise pins.emergencyStopException()
+                            break
+                            # raise pins.emergencyStopException() # this is a hack. fix later
                 else:
                     self.purgeLog.logger('debug',"The supply pressure is less than 16bar for last fill")
                     self.__initiate()
@@ -847,7 +917,8 @@ class purgeModes(pins.logicPins):
                             raise faultErrorException()
                         elif self.stopFlag:
                             self.purgeLog.logger('debug', 'Emergency stop flag. Exiting')
-                            raise pins.emergencyStopException()         
+                            break
+                            # raise pins.emergencyStopException() # this is a hack. fix later
             else:
                 # Helium fill process
                 self.purgeLog.logger('debug', 'Not the last fill cycle')
@@ -870,7 +941,8 @@ class purgeModes(pins.logicPins):
                         raise overPressureException()
                     elif self.stopFlag:
                         self.purgeLog.logger('debug', 'Emergency stop flag. Exiting')
-                        raise pins.emergencyStopException()
+                        break
+                        # raise pins.emergencyStopException() # this is a hack. fix later
         except KeyboardInterrupt:
             self.timeoutFlag = True
             self.__heFillExit()
@@ -911,12 +983,8 @@ class purgeModes(pins.logicPins):
         with self.sharedBoolFlags.get_lock():
                 self.errorFlag = self.sharedBoolFlags[3]
         cycleCount = self.sharedValues[4]
-        print("Number of cycles completed: ", self.noOfCycles)
-        print("Number of cycles to go: ", cycleCount)
-        print(self.errorFlag)
 
         while (self.noOfCycles < cycleCount) and (self.errorFlag == False):
-            print("In the state machine")
             self.__idle()
             # time.sleep(1)
             # Check if it is the last cycle to be run
@@ -948,7 +1016,7 @@ class purgeModes(pins.logicPins):
 
 # Display once to save processing time
         with self.i2cLock:
-            self.display.lcd_display_string("No of cycles:", 1)
+            self.display.lcd_display_string("No of cycles: ", 1)
             self.display.lcd_display_string("Press start", 2)
             self.display.lcd_display_string("Press1: ", 3)
             self.display.lcd_display_string("Press2: ", 4)
@@ -1070,6 +1138,64 @@ class purgeModes(pins.logicPins):
                     self.display.lcd_display_string("Sensor 2 not found",2)
                     self.display.lcd_display_string("Press Reset",4)
                 raise sensorErrorException()
+
+            elif supplyPressure > self.constant.SUPPLYBROKEN and supplyPressure < 1:
+                with self.sharedBoolFlags.get_lock():
+                    self.sharedBoolFlags[3] = True
+                self.errorFlag = True
+
+                self.purgeLog.logger('error', 'The supply is not connected. Allowing user to fix it')
+                time.sleep(0.3)
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 1",1)
+                    self.display.lcd_display_string("                    ",2)
+                    self.display.lcd_display_string("No supply connected",3)
+                    self.display.lcd_display_string("Please fix!", 4)
+
+                    self.display.lcd_display_string("Press1:", 2)
+
+                if self.stopFlag:
+                    self.display.lcd_display_string("Press reset!", 3)
+                    self.stopFlag = False
+                self.toggleBeep(1)
+
+                while (supplyPressure <= self.constant.MAXSUPPLYPRESSURE):
+                    with self.i2cLock:
+                        supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
+                        self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), 2, 8)
+
+                    with self.sharedBoolFlags.get_lock():
+                        self.stopFlag = self.sharedBoolFlags[1]
+                        self.resetFlag = self.sharedBoolFlags[2]
+
+                    if self.stopFlag or self.resetFlag:
+                        raise pins.emergencyStopException
+                    
+                with self.sharedBoolFlags.get_lock():
+                    self.sharedBoolFlags[3] = False
+                self.toggleBeep(0)
+
+                time.sleep(1)
+                with self.i2cLock:
+                    supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
+                if (supplyPressure >= self.constant.PROOFPRESSURE) or (supplyPressure <= self.constant.MAXSUPPLYPRESSURE):
+                    self.purgeLog.logger('error', 'The supply pressure is out of bounds. User failed to fix it')
+                    with self.sharedBoolFlags.get_lock():
+                        self.sharedBoolFlags[3] = True
+                    # self.errorFlag = True
+                    return False
+                else:
+                    with self.sharedBoolFlags.get_lock():
+                        self.sharedBoolFlags[3] = False
+                    # self.errorFlag = False
+                    self.purgeLog.logger('warning', 'The no supply was connected. User succeeded to fix it')
+                    
+                    # if (supplyPressure > self.constant.MAXSUPPLYPRESSURE) and (supplyPressure < self.constant.PROOFPRESSURE):
+                    #     self.__preFillCheck(supplyPressure, 'higher')
+                    # else:
+                    #     self.__preFillCheck(supplyPressure, 'lower')
+                    # return True
             else:
                 with self.sharedBoolFlags.get_lock():
                     self.sharedBoolFlags[3] = True
@@ -1139,10 +1265,11 @@ class purgeModes(pins.logicPins):
                         self.__preFillCheck(supplyPressure, 'higher')
                     else:
                         self.__preFillCheck(supplyPressure, 'lower')
-                    return True
                     """
-
-        elif (supplyPressure > self.constant.MAXSUPPLYPRESSURE) and\
+                    # return True
+                    
+        # Another check incase
+        if (supplyPressure > self.constant.MAXSUPPLYPRESSURE) and\
         (supplyPressure < self.constant.PROOFPRESSURE):
             with self.sharedBoolFlags.get_lock():
                 self.sharedBoolFlags[3] = False
@@ -1217,7 +1344,8 @@ class purge(object):
         self.measure = monitor.measure(8, 1)
         self.sharedBools = Array('b', [False, False, False, False]) # start, stop, reset, error flags
         self.sharedValues = Array('d', [0.0, 0.0, 0.0, 0.0, noOfCycles])    # pressure 1 - potentially stat 1 and 2 and bat voltage and cycleCount for 2,3,4,5
-        self.i2cLock = BoundedSemaphore(value=1)
+        # self.i2cLock = BoundedSemaphore(value=1)
+        self.i2cLock = RLock()
 
         # self.i2cLock.acquire(block=)
 
@@ -1302,7 +1430,6 @@ class purge(object):
                     task2Process.terminate()      
             
                     if overPError:
-                        print("OverP Error")
                         self.runrun.eVentHandle()
 
                     raise overPressureException
@@ -1329,7 +1456,6 @@ class purge(object):
             beepbeepPeriod = 0.5 # seconds
             resetFlag = self.sharedBools[2]
             while GPIO.input(self.runrun.nResetButton) and resetFlag == 0:
-                print(resetFlag)
                 stopFlag = self.sharedBools[1]
                 resetFlag = self.sharedBools[2]
                 self.runrun.toggleBeep(0)

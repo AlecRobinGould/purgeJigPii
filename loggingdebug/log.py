@@ -50,6 +50,16 @@ class log():
         else:
             logging.warning('Logger has been used out of condition')
 
+    def checkLogFile(self):
+        fileName = self.logpath + self.logfile
+        with open(fileName, "r") as file:
+            try:
+                x = file.readline(1)
+                file.close()
+            except OSError:
+                return False
+        return True
+
     def readState(self):
         """
         Opens a file named state and checks file size
