@@ -178,38 +178,42 @@ class measure(object):
                 return 'Major fault'
 
 def main():
-    read = measure()
-    # pin = pins.logicPins()
-    # pin.batteryStateSet(1, 0)
+    read = measure(1,18)
+    pin = pins.logicPins(True, None, None)
+    pin.batteryStateSet(1, 0)
 
     try:
         sleeptime = 0.5
         while True:
             # x = read.vacuumConversion(read.readVoltage(1))
             # read.display.lcd_display_string("sensor {}: ".format(1)+ "{:.2e}".format(x),1)
+            x = read.readVoltage(2)
+            # read.display.lcd_display_string("Batt: "+str(read.stateOfCharge(x))+"% ",2)
+            print(read.stateOfCharge(x))
+            time.sleep(5)
 
-            print(read.statusMonitor())
-            i = 2
-            read.pin.batteryStateSet(1, 1)
-            time.sleep(sleeptime)
-            x = read.readVoltage(i)
-            print(read.statusMonitor())
-            # print("Voltage before charge enable: %d", x)
+            # print(read.statusMonitor())
+            # i = 2
+            # read.pin.batteryStateSet(1, 1)
+            # time.sleep(sleeptime)
+            # x = read.readVoltage(i)
+            # print(read.statusMonitor())
+            # # print("Voltage before charge enable: %d", x)
 
 
-            read.pin.batteryStateSet(1, 0)
-            time.sleep(sleeptime)
-            p = read.readVoltage(i)
-            # print("Voltage after charge enable: %d", p)
-            print(round(p-x, 3))
-            print(read.statusMonitor())
+            # read.pin.batteryStateSet(1, 0)
+            # time.sleep(sleeptime)
+            # p = read.readVoltage(i)
+            # # print("Voltage after charge enable: %d", p)
+            # print(round(p-x, 3))
+            # print(read.statusMonitor())
 
             
-            # time.sleep(0.2)
-            if (round((p - x), 3)) > 0:
-                print("Eksdom is on")
-            else:
-                print("Eksdoms is off")
+            # # time.sleep(0.2)
+            # if (round((p - x), 3)) > 0:
+            #     print("Eksdom is on")
+            # else:
+            #     print("Eksdoms is off")
 
 
             

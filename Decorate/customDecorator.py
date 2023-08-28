@@ -9,18 +9,19 @@ Requires modules from "List of dependencies.txt"
 from __future__ import print_function
 import sys
 import threading
-from time import sleep
+import time
 
 # Python 2 support? probably will delete
-try:
-    import thread
-except ImportError:
-    import _thread as thread
+# try:
+#     import thread
+# except ImportError:
+#     import _thread as thread
+import _thread as thread
 
 class customDecorators(object):
 
-    def __init__(self, log):
-        self.log = log
+    # def __init__(self, log):
+        # self.log = log
 
     def quitFunction(self, fnName):
         """

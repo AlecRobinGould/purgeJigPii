@@ -78,7 +78,8 @@ class emailNotification(object):
         self.msg["Subject"] = subject
         self.msg["Date"] = formatdate(localtime=True)
         if bodyText:
-            self.msg.attach( MIMEText(bodyText) )
+            self.msg.set_payload([MIMEText(bodyText)])
+            # self.msg.attach( MIMEText(bodyText) )
         
         attachment = MIMEBase('application', "octet-stream")
         try:
@@ -86,6 +87,7 @@ class emailNotification(object):
                 data = fh.read()
             attachment.set_payload( data )
             encoders.encode_base64(attachment)
+# Comment this to remove attachment
             attachment.add_header(*self.header)
             self.msg.attach(attachment)
         except:
@@ -101,16 +103,23 @@ class emailNotification(object):
         server.starttls()
         server.send_message(self.msg)
         server.quit()
-        self.msg = "Email sent successfully"
-        self.mailDebug.logger('debug', self.msg)
+        self.logmsg = "Email sent successfully"
+        self.mailDebug.logger('debug', self.logmsg)
         return True
 
 def main():
     # cc_emails = ["someone@gmail.com"]
     # bcc_emails = ["anonymous@circe.org"]
 
-    subject = "Test email with attachment"
-    bodyText = "This email contains an attachment!"
+    # subject = "Purgejig bot has a bad message for you!"
+    # bodyText = ("Dear Purgejig user,\n\n;"
+    #             "Error 11;Battery monitoring major fault triggered;Attempting to continue... See logs FMI.;\n\n"
+    #             "Kind regards,\nPurgejig bot")
+    
+    subject = "Purgejig bot has a good message for you!"
+    bodyText = ("Dear Purgejig user,\n\n;"
+                "Error 13 is now resolved!;Please press start on the purge jig to continue purging.;\n\n"
+                "Kind regards,\nPurgejig bot")        
     # send_email_with_attachment(subject, bodyText, emails,
     #                            cc_emails, bcc_emails, path)
     test = emailNotification()

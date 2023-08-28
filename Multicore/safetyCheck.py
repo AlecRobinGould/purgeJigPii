@@ -2,6 +2,8 @@ import time
 
 class safety(object):
     def __init__(self, monitor: object, spinlock: object, sharedBools: bool, sharedValues: float):
+        self.unsafePressure = 22
+
         self.monitor = monitor
         self.spinlock = spinlock
         self.sharedBools = sharedBools
@@ -32,11 +34,9 @@ class safety(object):
         with self.sharedValues.get_lock():
             self.sharedValues[0] = supplyPressure
 
-        while supplyPressure < 23:
+        while supplyPressure < self.unsafePressure:
             with self.spinlock:
                 supplyPressure = self.monitor.pressureConversion(self.monitor.readVoltage(3), "0-34bar")
-            
-            print(supplyPressure)
             with self.sharedValues.get_lock():
                 self.sharedValues[0] = supplyPressure   
 
@@ -55,4 +55,7 @@ class safety(object):
         # #     for x in range(len(shared)):
         #     sharedBools[3] = False # errorFlag?
 
+        """This kills the other tasks in the main process.
+        Dont forget that exceptions terminate all locks
+        """
         raise Exception

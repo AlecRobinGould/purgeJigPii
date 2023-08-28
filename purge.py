@@ -14,6 +14,7 @@ import time, sys
 
 # Concurrency
 from multiprocessing import Process, current_process, RLock, Lock, BoundedSemaphore, Queue, Array
+import threading
 
 import pins
 from loggingdebug import log
@@ -43,18 +44,20 @@ class constantsNamespace():
         NOTE: frozen keyword indicates a readonly (sort of)
         """
         # Constants
-        MAXSUPPLYPRESSURE = 16
-        MINSUPPLYPRESSURE = 4
-        PROOFPRESSURE = 24
-        EMERGENCYVENTPRESSURE = 23
 
         MAXLOWGAUGE = 10
         MAXHIGHGAUGE = 34
 
+        BATLOW = 50
         # These are the values returned (roughly) for broken gauge
         SUPPLYBROKEN = -8
         VENTBROKEN = -2
-        VACUUMPROKEN = -1
+        VACUUMBROKEN = -1
+        # Set pressure values
+        MAXSUPPLYPRESSURE = 16
+        MINSUPPLYPRESSURE = 4
+        PROOFPRESSURE = 24
+        EMERGENCYVENTPRESSURE = 22
 
         PREFILLPRESSURE = 16
         VENTPRESSURE = 0.2
@@ -63,7 +66,7 @@ class constantsNamespace():
         FILLPRESSURE = 4
         LASTFILLPRESSURE = 16
         SAFETOVACUUM = 0.5
-
+        # ADC channels
         VACUUMCHANNEL = 1
         BATTERYVOLTCHANNEL = 2
         SUPPLYPRESSURECHANNEL = 3
@@ -117,6 +120,14 @@ class resetException(pins.Error):
     def __init__(self, message='Exception rasied through reset.'):
         # Call the base class constructor with the parameters it needs
         super(resetException, self).__init__(message)
+        
+class batteryError(pins.Error):
+    """
+    Class for battery or related circuity misbehaving
+    """
+    def __init__(self, message='Exception rasied through a faulty charging/battery related issue.'):
+        # Call the base class constructor with the parameters it needs
+        super(batteryError, self).__init__(message)
 
 # class timeOutError(pins.Error):
 #     """
@@ -126,13 +137,7 @@ class resetException(pins.Error):
 #         # Call the base class constructor with the parameters it needs
 #         super(timeOutError, self).__init__(message)
 
-class batteryError(pins.Error):
-    """
-    Class for battery or related circuity misbehaving
-    """
-    def __init__(self, message='Exception rasied through a faulty charging/battery related issue.'):
-        # Call the base class constructor with the parameters it needs
-        super(batteryError, self).__init__(message)
+
 
 # inherit ability to control and monitor pins, logging, and notifcations
 # This is the superclass!
@@ -158,7 +163,7 @@ class purgeModes(pins.logicPins):
         self.display = displayLCD.lcd()
         self.mail = notify.emailNotification()
         self.purgeLog = log.log()
-        self.decorate = customDecorator.customDecorators(self.purgeLog)
+        # self.decorate = customDecorator.customDecorators(self.purgeLog)
         # self = self.measure.pin
 
         # This gets inherited from pins
@@ -191,6 +196,9 @@ class purgeModes(pins.logicPins):
             self.initialvactimeout = self.timecfg.get("timeout", "initialvactimeout")
             self.vacuumtimeout = self.timecfg.get("timeout", "vacuumtimeout")
             self.filltimeout = self.timecfg.get("timeout", "filltimeout")
+            self.dPdtTime = self.timecfg.get("timeout", "dPdtTime")
+            self.acceptabledPdt = self.timecfg.get("timeout", "acceptabledPdt")
+            self.chargetimeout = self.timecfg.get("timeout","chargetimeout")
         else:
             # print("Config not found! Exiting!")
             # sys.exit(1)
@@ -198,7 +206,7 @@ class purgeModes(pins.logicPins):
             with self.i2cLock:
                 self.display.lcd_clear()
                 self.display.lcd_display_string("Error 20",1)
-                self.display.lcd_display_string("Timeout",1)
+                self.display.lcd_display_string("Timeout",2)
                 self.display.lcd_display_string("Config file failed!",3)
                 self.display.lcd_display_string("Please check file.",4)
             
@@ -211,37 +219,92 @@ class purgeModes(pins.logicPins):
         # self.parallelProcessQueue()
         """Dont think we need this anymore"""
         self.p = Process(target=self.__fixableError)
+
+    def checkMains(self):
+
+        batteryVoltageCharge = 0
+        batteryVoltageNoCharge = 0
+        sampleavg = 15
+        # This disables charging to the device
+        self.batteryStateSet(batteryEnable = 1, chargeEnable=1)
+        for i in range(sampleavg):
+            batteryVoltageNoCharge += self.measure.readVoltage(self.constant.BATTERYVOLTCHANNEL)
+        batteryVoltageNoCharge = batteryVoltageNoCharge/sampleavg
+
+        # This re-enables charging to the device
+        self.batteryStateSet(batteryEnable = 1, chargeEnable=0)
+        for i in range(sampleavg):
+            batteryVoltageCharge += self.measure.readVoltage(self.constant.BATTERYVOLTCHANNEL)
+        batteryVoltageCharge = batteryVoltageCharge/sampleavg
+        
+        difference = batteryVoltageCharge - batteryVoltageNoCharge
+        if round( (difference), 6) > 0 and (self.measure.statusMonitor() == 'Charging'):
+            self.purgeLog.logger('debug', 'Mains is on.')
+            return True
+        else:
+            self.purgeLog.logger('debug', 'Mains is off')
+            return False
     
     def eVentHandle(self):
         self.__emergencyVent()
         self.purgeLog.logger('error','Device is emergency venting')
+        subject = "Purgejig bot has a bad message for you!"
+        bodyText = ("Dear Purgejig user,\n\n;"
+                    "Error 10;Supply over-pressure occured;The Emergency vent state is active. Lower supply immediatelty. See logs FMI.;\n\n"
+                    "Kind regards,\nPurgejig bot")
         self.display.lcd_clear()
         self.display.lcd_display_string("Error 10",1)
         self.display.lcd_display_string("Supply over pressure",2)
         self.display.lcd_display_string("Press1:",self.constant.SUPPLYPRESSURECHANNEL)
         self.display.lcd_display_string("Please lower supply!",4)
+        if self.mail.sendMailAttachment(subject, bodyText):
+            self.display.lcd_display_string("Error 10",1)
+        else:
+            self.display.lcd_display_string("Error 10 & 16",1)
         supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
-        while supplyPressure > 23:
+        while supplyPressure > self.constant.EMERGENCYVENTPRESSURE:
             # with self.i2cLock:
             supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
             self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 7)
-
+        
         time.sleep(0.5)
         supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
-        if supplyPressure < 23:
+        if supplyPressure < self.constant.EMERGENCYVENTPRESSURE:
             self.purgeLog.logger('debug','Device supply pressure is safe.')
+            self.display.lcd_clear()
+            self.display.lcd_display_string("Supply pressure safe",1)
+            self.display.lcd_display_string("Venting manifold...",2)
+            self.display.lcd_display_string("Press2: ",4)
+            
             # Pressure has been corrected
-            self.__idle()
-            self.__beepOff()
+            # self.__idle()
+            self.__emergencyVentClose
+            # self.__beepOff()
             # with self.sharedBoolFlags.get_lock():
             self.sharedBoolFlags[3] = False
+            ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+            while ventPressure > self.constant.MINSUPPLYPRESSURE:
+                ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+                self.display.lcd_display_string("{} bar ".format(round(ventPressure,2)), self.constant.VENTPRESSURECHANNEL, 8)
+            self.__idle()
+            self.__beepOff()
+            self.display.lcd_clear()
+            self.display.lcd_display_string("E-vent success!",1)
+            self.display.lcd_display_string("Press reset!",3)
+            
+
         else:
             self.__emergencyVent()
             self.purgeLog.logger('error','Device is emergency venting again.')
-            while supplyPressure > 23:
+            while supplyPressure > self.constant.EMERGENCYVENTPRESSURE:
                 # with self.i2cLock:
                 supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
                 self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 7)
+            ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+            while ventPressure > self.constant.MINSUPPLYPRESSURE:
+                ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+            self.__idle()
+            self.__beepOff()
 
     def __fixableError(self):
         self.purgeLog.logger('warning','Entering fix error user notifier')
@@ -272,6 +335,10 @@ class purgeModes(pins.logicPins):
         self.purgeLog.logger('warning','Exiting fix error user notifier')
         return True
 
+    def batMon(self, queue):
+        pass
+
+    @customDecorator.customDecorators.exitAfter('chargetimeout')
     def checkBattery(self, state):
         with self.i2cLock:
             self.display.lcd_display_string("Battery check in",1)
@@ -287,12 +354,24 @@ class purgeModes(pins.logicPins):
     
         if batteryStatus == 'Major fault':
             self.purgeLog.logger('warning', 'Major fault on battery system.')
-            with self.i2cLock:
-                self.display.lcd_clear()
-                self.display.lcd_display_string("Error 11:",1)
-                self.display.lcd_display_string("Bat mon major fault",2)
-                self.display.lcd_display_string("Attempting to",3)
-                self.display.lcd_display_string("proceed...",4)
+            subject = "Purgejig bot has a bad message for you!"
+            bodyText = ("Dear Purgejig user,\n\n;"
+                        "Error 11;Battery monitoring major fault triggered;Attempting to continue... See logs FMI.;\n\n"
+                        "Kind regards,\nPurgejig bot")
+            if self.mail.sendMailAttachment(subject, bodyText):
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 11:",1)
+                    self.display.lcd_display_string("Bat mon major fault",2)
+                    self.display.lcd_display_string("Attempting to",3)
+                    self.display.lcd_display_string("proceed...",4)
+            else:
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 11 & 16:",1)
+                    self.display.lcd_display_string("Bat mon major fault",2)
+                    self.display.lcd_display_string("Attempting to",3)
+                    self.display.lcd_display_string("proceed...",4)
             self.toggleBeep(1)
             while batteryStatus == 'Major fault':
                 batteryStatus == self.measure.statusMonitor()
@@ -303,11 +382,20 @@ class purgeModes(pins.logicPins):
                     
                     # self.stopFlag = True
                     self.purgeLog.logger('error', 'Major fault not recovered.')
-                    with self.i2cLock:
-                        self.display.lcd_clear()
-                    
-                        self.display.lcd_display_string("                    ",3)
-                        self.display.lcd_display_string("Power-off device",4)
+                    subject = "Purgejig bot has a bad message for you!"
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Error 11;Battery monitoring major fault triggered;Attempt to continue failed.See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subject, bodyText):
+                        with self.i2cLock:
+                            # self.display.lcd_clear()
+                            self.display.lcd_display_string("                    ",3)
+                            self.display.lcd_display_string("Power-off device",4)
+                    else:
+                        with self.i2cLock:
+                            self.display.lcd_display_string("Email failed        ",3)
+                            self.display.lcd_display_string("Power-off device",4)
+
                     raise faultErrorException()
                 else:
                     self.purgeLog.logger('debug', 'Major fault counter: {}.'.format(majorFaultCounter))
@@ -316,12 +404,24 @@ class purgeModes(pins.logicPins):
             self.purgeLog.logger('debug', 'Major fault recovered.')
         elif batteryStatus == 'Fault':
             self.purgeLog.logger('debug', 'Minor fault on battery system.')
-            with self.i2cLock:
-                self.display.lcd_clear()
-                self.display.lcd_display_string("Error 12:",1)
-                self.display.lcd_display_string("Bat mon minor fault",2)
-                self.display.lcd_display_string("                    ",3)
-                self.display.lcd_display_string("No action req.      ",4)
+            subject = "Purgejig bot has a bad message for you!"
+            bodyText = ("Dear Purgejig user,\n\n;"
+                        "Error 12;Battery monitoring minor fault triggered;Device will continue... See logs FMI.;\n\n"
+                        "Kind regards,\nPurgejig bot")
+            if self.mail.sendMailAttachment(subject, bodyText):
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 12:",1)
+                    self.display.lcd_display_string("Bat mon minor fault",2)
+                    self.display.lcd_display_string("                    ",3)
+                    self.display.lcd_display_string("No action req.      ",4)
+            else:
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 12 & 16:",1)
+                    self.display.lcd_display_string("Bat mon minor fault",2)
+                    self.display.lcd_display_string("Email failed,",3)
+                    self.display.lcd_display_string("Please fix email!",4)
             minorFaultCounter = 0
             with self.sharedBoolFlags.get_lock():
                 self.sharedBoolFlags[3] = True
@@ -381,12 +481,78 @@ class purgeModes(pins.logicPins):
         # Measure the bat voltage as in SOC
         with self.i2cLock:
             batPercent = self.measure.stateOfCharge(self.measure.readVoltage(self.constant.BATTERYVOLTCHANNEL))
-        if batPercent >= 40:
+        if batPercent >= self.constant.BATLOW:
             self.purgeLog.logger('debug','Battery SOC is good.')
         else:
-            self.purgeLog.logger('debug','Battery SOC is less than 40%. Not enough to proceed.')
-            raise batteryError()
-
+            batTimeoutFlag = False
+            try:
+                if eskomIsOn:
+                    self.purgeLog.logger('debug','Battery SOC is less than 40%. Waiting for charge.')
+                    subject = "Purgejig bot has a bad message for you!"
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Error 13;Battery voltage is too low;The batteries wont hold through load-shedding, the batteries will be attempting to charge. See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subject, bodyText):
+                        with self.i2cLock:
+                            self.display.lcd_clear()
+                            self.display.lcd_display_string("Error 13:",1)
+                            self.display.lcd_display_string("Bat critically low,",2)
+                            self.display.lcd_display_string("charging to 40%",3)
+                            self.display.lcd_display_string("Current SOC: ",4)
+                    else:
+                        with self.i2cLock:
+                            self.display.lcd_clear()
+                            self.display.lcd_display_string("Error 13 & 16:",1)
+                            self.display.lcd_display_string("Bat critically low",2)
+                            self.display.lcd_display_string("Email failed!",3)
+                            self.display.lcd_display_string("Current SOC: ",4)
+                    self.__beepOn()
+                    with self.i2cLock:
+                        self.display.lcd_display_string(str(batPercent-10)+"% ",4,13)
+                    time.sleep(5)
+                    self.__beepOff()
+                    # This sets charge enable and battery enable 
+                    self.batteryStateSet(batteryEnable = 1, chargeEnable=0)
+                    while batPercent < self.constant.BATLOW:
+                        time.sleep(5)
+                        with self.i2cLock:
+                            batPercent = self.measure.stateOfCharge(self.measure.readVoltage(self.constant.BATTERYVOLTCHANNEL))
+                            self.display.lcd_display_string(str(batPercent-10)+"% ",4,13)
+                else:
+                    batTimeoutFlag = True
+                    self.purgeLog.logger('debug','Battery SOC is less than 40%. Mains is off. User must turn on mains and try again.')
+                    
+            except KeyboardInterrupt:
+                batTimeoutFlag = True
+            finally:
+                if batTimeoutFlag:
+                    self.purgeLog.logger('debug','Battery SOC is less than 40%. Mains is off OR, the batteries werent charged enough in 30 minutes. Not enough to proceed.')
+                    subjects = "Purgejig bot has a bad message for you!"
+                    bodyTexts = ("Dear Purgejig user,\n\n;"
+                                "Error 13;Battery voltage is STILL too low;The batteries wont hold through load-shedding, check batteries/charging circuit/mains power. See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subjects, bodyTexts):
+                        with self.i2cLock:
+                            self.display.lcd_clear()
+                            self.display.lcd_display_string("Error 13:",1)
+                            self.display.lcd_display_string("Bat critically low",2)
+                            self.display.lcd_display_string("Try again later...",3)
+                            self.display.lcd_display_string("Press reset",4)
+                    else:
+                        with self.i2cLock:
+                            self.display.lcd_clear()
+                            self.display.lcd_display_string("Error 13 & 16:",1)
+                            self.display.lcd_display_string("Bat critically low",2)
+                            self.display.lcd_display_string("Email failed!",3)
+                            self.display.lcd_display_string("Press reset",4)
+                    raise batteryError()
+                else:
+                    self.purgeLog.logger('debug','Battery SOC is greater than 40%. The batteries were charged enough before 30 minutes. Proceeding.')
+                    subjectss = "Purgejig bot has a good message for you!"
+                    bodyTextss = ("Dear Purgejig user,\n\n;"
+                                "Error 13 is now resolved!;Please press start on the purge jig to continue purging.;\n\n"
+                                "Kind regards,\nPurgejig bot")        
+                    self.mail.sendMailAttachment(subjectss, bodyTextss)
         self.batteryStateSet(batteryEnable = 1, chargeEnable=0)
         return True
     
@@ -412,7 +578,7 @@ class purgeModes(pins.logicPins):
                 self.display.lcd_clear()
             if self.mail.sendMailAttachment(
                 subject = "Purgejig bot has a bad message for you!",
-                bodyText = "Dear Purgejig user,\n\nRPi RAM is over-used!.\n\nKind regards,\nPurgejig bot"):
+                bodyText = ("Dear Purgejig user,;\n\nError 17;RPi RAM is over-used!. Log in remotely and terminate unneccessary tasks.;\n\nKind regards,\nPurgejig bot")):
                 with self.i2cLock:
                     self.display.lcd_display_string("Error 17",1)
                     self.display.lcd_display_string("                    ",2)
@@ -436,9 +602,11 @@ class purgeModes(pins.logicPins):
             self.purgeLog.logger('warning', 'RPi storage is over-used.')
             with self.i2cLock:
                 self.display.lcd_clear()
-            if self.mail.sendMailAttachment(
-                subject = "Purgejig bot has a bad message for you!",
-                bodyText = "Dear Purgejig user,\n\nRPi storage is over-used!.\n\nKind regards,\nPurgejig bot"):
+            subject = "Purgejig bot has a bad message for you!"
+            bodyText = ("Dear Purgejig user,\n\n;"
+                        "Error 17;RPi storage is over-used!;Maintanence of the RPi may be required.;\n\n"
+                        "Kind regards,\nPurgejig bot")
+            if self.mail.sendMailAttachment(subject, bodyText):
                 with self.i2cLock:
                     self.display.lcd_display_string("Error 17",1)
                     self.display.lcd_display_string("                    ",2)
@@ -463,19 +631,21 @@ class purgeModes(pins.logicPins):
             self.purgeLog.logger('warning', 'Logfile is not working.')
             with self.i2cLock:
                 self.display.lcd_clear()
-            if self.mail.sendMailAttachment(
-                subject = "Purgejig bot has a bad message for you!",
-                bodyText = "Dear Purgejig user,\n\nLog file not found, or accessable!.\n\nKind regards,\nPurgejig bot"):
+            subject = "Purgejig bot has a bad message for you!"
+            bodyText = ("Dear Purgejig user,\n\n;"
+                        "Error 20;Log file not found, or accessable!;Maintanence of the RPi may be required.;\n\n"
+                        "Kind regards,\nPurgejig bot")
+            if self.mail.sendMailAttachment(subject, bodyText):
                 with self.i2cLock:
-                    self.display.lcd_display_string("Error 21",1)
+                    self.display.lcd_display_string("Error 20",1)
                     self.display.lcd_display_string("                    ",2)
                     self.display.lcd_display_string("Logging fault",3)
                     self.display.lcd_display_string("Purge will cont.",4)
             else:
                 with self.i2cLock:
-                    self.display.lcd_display_string("Error 16, 21:",1)
+                    self.display.lcd_display_string("Error 16, 20:",1)
                     self.display.lcd_display_string("Email fail , and",2)
-                    self.display.lcd_display_string("Storage full",3)
+                    self.display.lcd_display_string("Logging fault",3)
                     self.display.lcd_display_string("Purge will cont.",4)
             time.sleep(10)
             with self.i2cLock:
@@ -534,6 +704,20 @@ class purgeModes(pins.logicPins):
             self.__beepOn()
         else:
             self.__beepOff()
+
+    def __emergencyVentClose(self):
+        """
+        Internal method for closing vent and supply(fill) valves. E-vent.
+        """
+        self.purgeLog.logger('debug',"entered E-vent")
+        GPIO.output(self.enPump, 0)
+        GPIO.output(self.vacValve, 0)
+        GPIO.output(self.fillValve, 0)
+        GPIO.output(self.enStepMotor, 0)
+        GPIO.output(self.enBuzzer, 1)
+        time.sleep(5)
+        GPIO.output(self.ventValve1, 1)
+        GPIO.output(self.ventValve2, 1)
     
     def __emergencyVent(self):
         """
@@ -571,6 +755,7 @@ class purgeModes(pins.logicPins):
         GPIO.output(self.ventValve1, 0)
         GPIO.output(self.ventValve2, 0)
         GPIO.output(self.fillValve, 0)
+        time.sleep(2)
         GPIO.output(self.enStepMotor, 0)
         # GPIO.output(self.enBuzzer, 0)
 
@@ -620,7 +805,7 @@ class purgeModes(pins.logicPins):
 
         
         GPIO.output(self.vacValve, 0)
-        time.sleep(1)   # This closes the valve before the vacuum pump turns off
+        time.sleep(2)   # This closes the valve before the vacuum pump turns off
                         # reducing the chance of contamination
         GPIO.output(self.enPump, 0)
         GPIO.output(self.ventValve1, 0)
@@ -629,7 +814,7 @@ class purgeModes(pins.logicPins):
         GPIO.output(self.enStepMotor, 0)
         # GPIO.output(self.enBuzzer, 0)
     
-    # Take note that this is not a set of char being passes into
+    # Take note that this is not a set of char being passed into
     # this decorator. It is an attribute of purgeModes class.
     # See __init__ for self.venttimeout
     @customDecorator.customDecorators.exitAfter('venttimeout')
@@ -640,7 +825,7 @@ class purgeModes(pins.logicPins):
             # Venting process
             with self.i2cLock:
                 ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-            if (ventPressure < 0) and self.stopFlag == 0 and self.resetFlag == 0:
+            if (ventPressure < -0.1) and self.stopFlag == 0 and self.resetFlag == 0:
                 # Insert error here
                 ventType = 'Vacuum'
                 self.__vent()
@@ -677,22 +862,53 @@ class purgeModes(pins.logicPins):
                 with self.i2cLock:
                     self.display.lcd_clear()
                 time.sleep(0.1)
+                subject = "Purgejig bot has a bad message for you!"
                 if ventType == 'Pressurised':
-                    with self.i2cLock:
-                        self.display.lcd_display_string("Error 8:",1)
-                        self.display.lcd_display_string("Vent timeout",2)
-                        self.display.lcd_display_string("Press Reset",4)
-                elif ventType == 'None':
-                    with self.i2cLock:
-                        self.display.lcd_display_string("Error 3:",1)
-                        self.display.lcd_display_string("Vent timeout",2)
-                        self.display.lcd_display_string("Sensor 2 fault",3)
-                        self.display.lcd_display_string("Press Reset",4)
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Error 8;Vent stage timeout;The vent stage took too long, there may be leaks or other errros. See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subject, bodyText):
+                        with self.i2cLock:
+                            self.display.lcd_display_string("Error 8:",1)
+                            self.display.lcd_display_string("Vent timeout",2)
+                            self.display.lcd_display_string("Press Reset",4)
+                    else:
+                        with self.i2cLock:
+                            self.display.lcd_display_string("Error 8 & 16:",1)
+                            self.display.lcd_display_string("Vent timeout",2)
+                            self.display.lcd_display_string("Email failed",2)
+                            self.display.lcd_display_string("Press Reset",4)
+                elif ventType == 'Vacuum':
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Error 3;Vent stage timeout;The vent stage took too long, there may be leaks or vent sensor failure. See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subject, bodyText):
+                        with self.i2cLock:
+                            self.display.lcd_display_string("Error 3:",1)
+                            self.display.lcd_display_string("Vent timeout",2)
+                            self.display.lcd_display_string("Sensor 2 fault",3)
+                            self.display.lcd_display_string("Press Reset",4)
+                    else:
+                        with self.i2cLock:
+                            self.display.lcd_display_string("Error 3 & 16:",1)
+                            self.display.lcd_display_string("Vent timeout",2)
+                            self.display.lcd_display_string("Sensor 2 fault",3)
+                            self.display.lcd_display_string("Press Reset",4)
                 else:
-                    with self.i2cLock:
-                        self.display.lcd_display_string("Error unknown:",1)
-                        self.display.lcd_display_string("Vent timeout",2)
-                        self.display.lcd_display_string("Press Reset",4)
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Unknown error code;Vent stage timeout;See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subject, bodyText):
+                        with self.i2cLock:
+                            self.display.lcd_display_string("Error unknown:",1)
+                            self.display.lcd_display_string("Vent timeout",2)
+                            self.display.lcd_display_string("Press Reset",4)
+                    else:
+                        with self.i2cLock:
+                            self.display.lcd_display_string("Error unknown & 16",1)
+                            self.display.lcd_display_string("Vent timeout",2)
+                            self.display.lcd_display_string("Email failed",3)
+                            self.display.lcd_display_string("Press Reset",4)
                 raise timeOutError()
             else:
                 self.__ventExit()
@@ -703,15 +919,29 @@ class purgeModes(pins.logicPins):
     @customDecorator.customDecorators.exitAfter('initialvactimeout')
     def __initVacProcess(self):
         self.state = 'initvacuum'
-        manifoldPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
-        if manifoldPressure > 0.5:
+        with self.i2cLock:
+            ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+        if ventPressure > 0.5:
             self.__idle()
             self.purgeLog.logger('error', 'Manifold pressure too high to vacuum.')
-            with self.i2cLock:
-                self.display.lcd_clear()
-                self.display.lcd_display_string("Error 19:",1)
-                self.display.lcd_display_string("Vent failure",2)
-                self.display.lcd_display_string("Press Reset",4)
+            subject = "Purgejig bot has a bad message for you!"
+            bodyText = ("Dear Purgejig user,\n\n;"
+                        "Error 19;Initial vacuum stage failure;The Vent stage failed to properly vent, vacuum cant continue. See logs FMI.;\n\n"
+                        "Kind regards,\nPurgejig bot")
+            if self.mail.sendMailAttachment(subject, bodyText):
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 19:",1)
+                    self.display.lcd_display_string("Vent failure",2)
+                    self.display.lcd_display_string("Press Reset",4)
+            else:
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 19 & 16:",1)
+                    self.display.lcd_display_string("Vent failure",2)
+                    self.display.lcd_display_string("Email failed",3)
+                    self.display.lcd_display_string("Press Reset",4)
+
             with self.sharedBoolFlags.get_lock():
                 self.sharedBoolFlags[3] = True
             raise overPressureException()
@@ -745,11 +975,23 @@ class purgeModes(pins.logicPins):
                 if self.timeoutFlag:
                     self.__idle()
                     self.purgeLog.logger('error', 'Initialising vacuum timeout errror!')
-                    with self.i2cLock:
-                        self.display.lcd_clear()
-                        self.display.lcd_display_string("Error 5:",1)
-                        self.display.lcd_display_string("Initial vac timeout",2)
-                        self.display.lcd_display_string("Press Reset",4)
+                    subject = "Purgejig bot has a bad message for you!"
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Error 5;Inital vacuum stage timeout;The inital vacuum generation timed out, vacuum cant continue. See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subject, bodyText):
+                        with self.i2cLock:
+                            self.display.lcd_clear()
+                            self.display.lcd_display_string("Error 5:",1)
+                            self.display.lcd_display_string("Initial vac timeout",2)
+                            self.display.lcd_display_string("Press Reset",4)
+                    else:
+                        with self.i2cLock:
+                            self.display.lcd_clear()
+                            self.display.lcd_display_string("Error 5 & 16:",1)
+                            self.display.lcd_display_string("Initial vac timeout",2)
+                            self.display.lcd_display_string("Email failed",3)
+                            self.display.lcd_display_string("Press Reset",4)
                     with self.sharedBoolFlags.get_lock():
                         self.sharedBoolFlags[3] = True
                     # self.errorFlag = True
@@ -763,6 +1005,50 @@ class purgeModes(pins.logicPins):
                     with self.i2cLock:
                         self.display.lcd_display_string("                    ", 2)
                         self.display.lcd_display_string("                    ", 3)
+    
+    def dPdt(self, p1, p2, deltaTime):
+        return (p1-p2)/deltaTime
+
+    def timerFunc(self, timer, initValues, userNotified = False):
+        if self.state == 'vacuum': # incase the is_alive time.cancel doesnt work
+            with self.i2cLock:
+                p2 = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
+            deltaTime = time.monotonic() - initValues[0]
+
+            self.purgeLog.logger('debug', 'Pressure 1: {}'.format(initValues[1]))
+            self.purgeLog.logger('debug', 'Pressure 2: {}'.format(p2))
+
+            dPdt = self.dPdt(initValues[1], p2, deltaTime)
+            self.purgeLog.logger('debug', 'dPdt is: {}'.format(dPdt))
+            if dPdt > float(self.acceptabledPdt):
+                self.purgeLog.logger('debug', 'Vacuum dPdt good.')
+                with self.i2cLock:
+                    self.display.lcd_display_string("dPdt is fine",4)
+            else:
+                self.purgeLog.logger('warning', 'Vacuum dPdt bad. Vacuum not dropping')
+                with self.i2cLock:
+                    self.display.lcd_display_string("dPdt is bad ",4)
+                if userNotified:
+                    pass
+                else:
+                    #NOTIFY USER
+                    subject = "Purgejig bot has a bad message for you!"
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Warning;The vacuum dPdt is low;Timeout error may kick in, and the purge would have to be restarted. See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subject, bodyText):
+                        # Send 1 email. Instead of spamming every 10 mins (or whatever time we set for dPdt)
+                        userNotified = True
+                    else:
+                        userNotified = False
+
+
+            initValues[0] = time.monotonic()
+            initValues[1] = p2            
+
+            self.timer = threading.Timer(int(self.dPdtTime), self.timerFunc, args=(self.timer, initValues, userNotified))
+            self.timer.start()
+
             
     @customDecorator.customDecorators.exitAfter('vacuumtimeout')
     def __vacProcess(self):
@@ -775,11 +1061,23 @@ class purgeModes(pins.logicPins):
             if (fillPressure >= self.constant.SAFETOVACUUM) and self.stopFlag == 0 and self.resetFlag == 0:
 # Remember to change the error class to a suitable vacuum name and also display what needs to be displayed
                 self.purgeLog.logger('error', 'Manifold pressure too high to open to vac')
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 19:",1)
-                    self.display.lcd_display_string("Vent failure",2)
-                    self.display.lcd_display_string("Press Reset",4)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 19;Vacuum stage failure;The Vent stage failed to properly vent, vacuum cant continue. See logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 19:",1)
+                        self.display.lcd_display_string("Vent failure",2)
+                        self.display.lcd_display_string("Press Reset",4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 19 & 16:",1)
+                        self.display.lcd_display_string("Vent failure",2)
+                        self.display.lcd_display_string("Email failed",3)
+                        self.display.lcd_display_string("Press Reset",4)
                 with self.sharedBoolFlags.get_lock():
                     self.sharedBoolFlags[3] = True
                     # self.errorFlag = True
@@ -794,6 +1092,9 @@ class purgeModes(pins.logicPins):
                 vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
 
             if (vacuumPressure >= self.constant.INITVACUUMPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
+                initValues = [time.monotonic(), vacuumPressure]
+                self.timer = threading.Timer(int(self.dPdtTime), self.timerFunc, args=(None, initValues, False))
+                self.timer.start()
                 while vacuumPressure >= self.constant.VACUUMPRESSURE:
                     with self.i2cLock:
                         vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
@@ -804,15 +1105,32 @@ class purgeModes(pins.logicPins):
                         self.purgeLog.logger('debug', 'Emergency stop flag. Exiting from vacuum.')
                         break
                         # raise pins.emergencyStopException() # this is a hack. fix later
+                
+                if self.timer.is_alive():
+                    self.purgeLog.logger('debug','Killing Vacuum dPdt timer.')
+                    self.timer.cancel()
             else:
 # Remember to change the error class to a suitable vacuum name and also display what needs to be displayed
                 self.purgeLog.logger('error', 'Vacuum load not detected. The pressure did not increase when solenoid opened!')
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 9:",1)
-                    self.display.lcd_display_string("Vacuum load not",2)
-                    self.display.lcd_display_string("detected",3)
-                    self.display.lcd_display_string("Press Reset",4)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 9;Vacuum load not detected;The vacuum stage failed due to no load, check if vacuum pump is connected, else check vac sensor. See logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 9:",1)
+                        self.display.lcd_display_string("Vacuum load not",2)
+                        self.display.lcd_display_string("detected",3)
+                        self.display.lcd_display_string("Press Reset",4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 9 & 16:",1)
+                        self.display.lcd_display_string("Vacuum load not",2)
+                        self.display.lcd_display_string("detected, Email fail",3)
+                        self.display.lcd_display_string("Press Reset",4)
+                
                 with self.sharedBoolFlags.get_lock():
                     self.sharedBoolFlags[3] = True
                 # self.errorFlag = True
@@ -827,11 +1145,23 @@ class purgeModes(pins.logicPins):
             if self.timeoutFlag:
                 self.__idle()
                 self.purgeLog.logger('error', 'Vacuum timeout errror!')
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 21:",1)
-                    self.display.lcd_display_string("Vacuum timeout",2)
-                    self.display.lcd_display_string("Press Reset",4)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 21;Vacuum timeout reached;The vacuum stage took too long, there is a leak or purge component is very dirty. See logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 21:",1)
+                        self.display.lcd_display_string("Vacuum timeout",2)
+                        self.display.lcd_display_string("Press Reset",4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 21 & 16:",1)
+                        self.display.lcd_display_string("Vacuum timeout",2)
+                        self.display.lcd_display_string("Email failed!",3)
+                        self.display.lcd_display_string("Press Reset",4)
                 raise timeOutError()
             elif self.stopFlag:
                 pass
@@ -876,7 +1206,7 @@ class purgeModes(pins.logicPins):
                         self.display.lcd_display_string("Press1:", self.constant.SUPPLYPRESSURECHANNEL)
                         self.display.lcd_display_string("Press2:", self.constant.VENTPRESSURECHANNEL)
 
-                    while (supplyPressure <= self.constant.LASTFILLPRESSURE) or (fillPressure <= self.constant.MAXLOWGAUGE):
+                    while (fillPressure <= self.constant.MAXLOWGAUGE):
                         with self.sharedValues.get_lock():
                             supplyPressure = self.sharedValues[0]
                         with self.i2cLock:
@@ -891,6 +1221,7 @@ class purgeModes(pins.logicPins):
                             self.purgeLog.logger('debug', 'Emergency stop flag. Exiting')
                             break
                             # raise pins.emergencyStopException() # this is a hack. fix later
+                    time.sleep(5)
                 else:
                     self.purgeLog.logger('debug',"The supply pressure is less than 16bar for last fill")
                     self.__initiate()
@@ -903,8 +1234,7 @@ class purgeModes(pins.logicPins):
                         self.display.lcd_display_string("Press1:", self.constant.SUPPLYPRESSURECHANNEL)
                         self.display.lcd_display_string("Press2:", self.constant.VENTPRESSURECHANNEL)
 
-                    while (supplyPressure <= highestPossiblePressure) or\
-                    (fillPressure <= self.constant.MAXLOWGAUGE) and self.stopFlag == 0:
+                    while (fillPressure <= self.constant.MAXLOWGAUGE) and self.stopFlag == 0:
                         with self.sharedValues.get_lock():
                             supplyPressure = self.sharedValues[0]
                         with self.i2cLock:
@@ -913,12 +1243,13 @@ class purgeModes(pins.logicPins):
                             self.display.lcd_display_string("{} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 7)
                             self.display.lcd_display_string("{} bar ".format(round(fillPressure,2)), self.constant.VENTPRESSURECHANNEL, 7)
                         if supplyPressure >= self.constant.PROOFPRESSURE:
-                            self.overPressureFlag
-                            raise faultErrorException()
+                            self.overPressureFlag = True
+                            # raise faultErrorException()
                         elif self.stopFlag:
                             self.purgeLog.logger('debug', 'Emergency stop flag. Exiting')
                             break
                             # raise pins.emergencyStopException() # this is a hack. fix later
+                    time.sleep(5)
             else:
                 # Helium fill process
                 self.purgeLog.logger('debug', 'Not the last fill cycle')
@@ -938,7 +1269,7 @@ class purgeModes(pins.logicPins):
                         self.display.lcd_display_string("{} bar ".format(round(fillPressure,2)), self.constant.VENTPRESSURECHANNEL, 7)
                     if supplyPressure >= self.constant.PROOFPRESSURE:
                         self.overPressureFlag = True                       
-                        raise overPressureException()
+                        # raise overPressureException()
                     elif self.stopFlag:
                         self.purgeLog.logger('debug', 'Emergency stop flag. Exiting')
                         break
@@ -950,15 +1281,28 @@ class purgeModes(pins.logicPins):
             if self.timeoutFlag:
                 self.__idle()
                 self.purgeLog.logger('error', 'Fill timeout errror!')
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 7:",1)
-                    self.display.lcd_display_string("Fill timeout",2)
-                    self.display.lcd_display_string("Press Reset",4)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 7;Helium fill timeout reached;The fill stage took too long, there could be a leak or the supply solenoid valve/relay broke. See logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 7:",1)
+                        self.display.lcd_display_string("Fill timeout",2)
+                        self.display.lcd_display_string("Press Reset",4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 7 & 16:",1)
+                        self.display.lcd_display_string("Fill timeout",2)
+                        self.display.lcd_display_string("Email failed",3)
+                        self.display.lcd_display_string("Press Reset",4)
                 raise timeOutError()
             elif self.overPressureFlag:
                 self.__idle()
                 self.purgeLog.logger('error', 'Supply over pressure error!')
+                # The seperate parallel process will handle this
                 # with self.i2cLock:
                 #     self.display.lcd_clear()
                 #     self.display.lcd_display_string("Error 10:",1)
@@ -1016,6 +1360,7 @@ class purgeModes(pins.logicPins):
 
 # Display once to save processing time
         with self.i2cLock:
+            self.display.lcd_clear()
             self.display.lcd_display_string("No of cycles: ", 1)
             self.display.lcd_display_string("Press start", 2)
             self.display.lcd_display_string("Press1: ", 3)
@@ -1109,34 +1454,70 @@ class purgeModes(pins.logicPins):
                 with self.sharedBoolFlags.get_lock():
                     self.sharedBoolFlags[3] = True
                 # self.errorFlag = True
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 2 & 4:",1)
-                    self.display.lcd_display_string("Sensor 1 and 2 not",2)
-                    self.display.lcd_display_string("found",3)
-                    self.display.lcd_display_string("Press Reset",4)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 2 & 4;Sensor 1 and sensor 2 not found;Supply and manifold/vent pressure sensors are broken or no power delivered. See logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 2 & 4:",1)
+                        self.display.lcd_display_string("Sensor 1 and 2 not",2)
+                        self.display.lcd_display_string("found",3)
+                        self.display.lcd_display_string("Press Reset",4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 2, 4, 16:",1)
+                        self.display.lcd_display_string("Sensor 1 and 2 not",2)
+                        self.display.lcd_display_string("found, Email failed",3)
+                        self.display.lcd_display_string("Press Reset",4)
                 raise sensorErrorException()
             elif supplyPressure < self.constant.SUPPLYBROKEN and ventPressure > self.constant.VENTBROKEN:
                 self.purgeLog.logger('error', 'Sensor 1 no signal. Likely broken.')
                 with self.sharedBoolFlags.get_lock():
                     self.sharedBoolFlags[3] = True
                 # self.errorFlag = True
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 2:",1)
-                    self.display.lcd_display_string("Sensor 1 not found",2)
-                    self.display.lcd_display_string("Press Reset",4)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 2;Sensor 1 not found;The supply pressure sensor is broken or has no power, please check. See logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 2:",1)
+                        self.display.lcd_display_string("Sensor 1 not found",2)
+                        self.display.lcd_display_string("Press Reset",4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 2 & 16:",1)
+                        self.display.lcd_display_string("Sensor 1 not found",2)
+                        self.display.lcd_display_string("Email failed",3)
+                        self.display.lcd_display_string("Press Reset",4)
                 raise sensorErrorException()
             elif supplyPressure > self.constant.SUPPLYBROKEN and ventPressure < self.constant.VENTBROKEN:
                 self.purgeLog.logger('error', 'Sensor 2 no signal. Likely broken.')
                 with self.sharedBoolFlags.get_lock():
                     self.sharedBoolFlags[3] = True
                 # self.errorFlag = True
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 4:",1)
-                    self.display.lcd_display_string("Sensor 2 not found",2)
-                    self.display.lcd_display_string("Press Reset",4)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 4;Sensor 2 not found;The manifold/vent pressure sensor is broken or has no power, please check. See logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 4:",1)
+                        self.display.lcd_display_string("Sensor 2 not found",2)
+                        self.display.lcd_display_string("Press Reset",4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 4 & 16:",1)
+                        self.display.lcd_display_string("Sensor 2 not found",2)
+                        self.display.lcd_display_string("Email failed",3)
+                        self.display.lcd_display_string("Press Reset",4)
                 raise sensorErrorException()
 
             elif supplyPressure > self.constant.SUPPLYBROKEN and supplyPressure < 1:
@@ -1145,15 +1526,27 @@ class purgeModes(pins.logicPins):
                 self.errorFlag = True
 
                 self.purgeLog.logger('error', 'The supply is not connected. Allowing user to fix it')
-                time.sleep(0.3)
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 1",1)
-                    self.display.lcd_display_string("                    ",2)
-                    self.display.lcd_display_string("No supply connected",3)
-                    self.display.lcd_display_string("Please fix!", 4)
-
-                    self.display.lcd_display_string("Press1:", 2)
+                # time.sleep(0.3)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 1;Helium supply is not connected;Please attach a He supply, see logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 1 ",1)
+                        self.display.lcd_display_string("                    ",2)
+                        self.display.lcd_display_string("No supply connected",3)
+                        self.display.lcd_display_string("Please fix!", 4)
+                        self.display.lcd_display_string("Press1:", 2)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 1 and 16",1)
+                        self.display.lcd_display_string("                    ",2)
+                        self.display.lcd_display_string("No supply connected",3)
+                        self.display.lcd_display_string("Please fix!", 4)
+                        self.display.lcd_display_string("Press1:", 2)
 
                 if self.stopFlag:
                     self.display.lcd_display_string("Press reset!", 3)
@@ -1170,8 +1563,10 @@ class purgeModes(pins.logicPins):
                         self.resetFlag = self.sharedBoolFlags[2]
 
                     if self.stopFlag or self.resetFlag:
-                        raise pins.emergencyStopException
-                    
+                        break
+
+                if self.stopFlag:
+                    raise pins.emergencyStopException    
                 with self.sharedBoolFlags.get_lock():
                     self.sharedBoolFlags[3] = False
                 self.toggleBeep(0)
@@ -1190,6 +1585,11 @@ class purgeModes(pins.logicPins):
                         self.sharedBoolFlags[3] = False
                     # self.errorFlag = False
                     self.purgeLog.logger('warning', 'The no supply was connected. User succeeded to fix it')
+                    subject = "Purgejig bot has a good message for you!"
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Error 1 resolved!;Helium supply has since been detected, purge will carry on as normal.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    self.mail.sendMailAttachment(subject, bodyText)
                     
                     # if (supplyPressure > self.constant.MAXSUPPLYPRESSURE) and (supplyPressure < self.constant.PROOFPRESSURE):
                     #     self.__preFillCheck(supplyPressure, 'higher')
@@ -1203,15 +1603,27 @@ class purgeModes(pins.logicPins):
                 
                 # self.p.start()
                 self.purgeLog.logger('error', 'The supply pressure is out of bounds. Allowing user to fix it')
-                time.sleep(0.3)
-                with self.i2cLock:
-                    self.display.lcd_clear()
-                    self.display.lcd_display_string("Error 22",1)
-                    self.display.lcd_display_string("                    ",2)
-                    self.display.lcd_display_string("Supply too low",3)
-                    self.display.lcd_display_string("Please fix!", 4)
-
-                    self.display.lcd_display_string("Press1:", 2)
+                # time.sleep(0.3)
+                subject = "Purgejig bot has a bad message for you!"
+                bodyText = ("Dear Purgejig user,\n\n;"
+                            "Error 22;Supply Pressure too low;Please increase the supply pressure, see logs FMI.;\n\n"
+                            "Kind regards,\nPurgejig bot")
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 22",1)
+                        self.display.lcd_display_string("                    ",2)
+                        self.display.lcd_display_string("Supply too low",3)
+                        self.display.lcd_display_string("Please fix!", 4)
+                        self.display.lcd_display_string("Press1:", 2)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 22 & 16",1)
+                        self.display.lcd_display_string("                    ",2)
+                        self.display.lcd_display_string("Supply too low",3)
+                        self.display.lcd_display_string("Please fix!", 4)
+                        self.display.lcd_display_string("Press1:", 2)
 
                 # p = Process(target=self.__fixableError, args=('self',))
                 if self.stopFlag:
@@ -1233,9 +1645,13 @@ class purgeModes(pins.logicPins):
                         #     time.sleep(1)
                         #     self.p.terminate()
                         #     self.toggleBeep(0)
-                        raise pins.emergencyStopException
+                        break
+                        # raise pins.emergencyStopException
 
                 #  This
+                if self.stopFlag:
+                    raise pins.emergencyStopException
+                
                 with self.sharedBoolFlags.get_lock():
                     self.sharedBoolFlags[3] = False
                 # self.errorFlag = False
@@ -1284,19 +1700,30 @@ class purgeModes(pins.logicPins):
             # self.__preFillCheck(supplyPressure, 'lower')
         with self.i2cLock:
             vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
-        if vacuumPressure == -1:
+        if vacuumPressure == self.constant.VACUUMBROKEN:
             with self.sharedBoolFlags.get_lock():
                 self.sharedBoolFlags[3] = True
             # self.errorFlag = True
-            with self.i2cLock:
-                self.display.lcd_clear()
-                self.display.lcd_display_string("Error 6:",1)
-                self.display.lcd_display_string("Vacuum sensor not",2)
-                self.display.lcd_display_string("found",3)
-                self.display.lcd_display_string("Press Reset",4)
+            subject = "Purgejig bot has a bad message for you!"
+            bodyText = ("Dear Purgejig user,\n\n;"
+                        "Error 6;Vacuum sensor not found;The vacuum sensor is broken or has no power, please check. See logs FMI.;\n\n"
+                        "Kind regards,\nPurgejig bot")
+            
+            if self.mail.sendMailAttachment(subject, bodyText):
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 6:",1)
+                    self.display.lcd_display_string("Vacuum sensor not",2)
+                    self.display.lcd_display_string("found",3)
+                    self.display.lcd_display_string("Press Reset",4)
+            else:
+                with self.i2cLock:
+                    self.display.lcd_clear()
+                    self.display.lcd_display_string("Error 6 & 16:",1)
+                    self.display.lcd_display_string("Vacuum sensor not",2)
+                    self.display.lcd_display_string("found, Email failed!",3)
+                    self.display.lcd_display_string("Press Reset",4)
             raise sensorErrorException()
-
-
 
     def machineRun(self, state, queue):
         """
@@ -1313,9 +1740,12 @@ class purgeModes(pins.logicPins):
             self.startFlag = False
             with self.i2cLock:
                 self.display.lcd_clear()
-            if self.mail.sendMailAttachment(
-                subject = "Purgejig bot has a good message for you!",
-                bodyText = "Dear Purgejig user,\n\nThe purge you initiated has successfully completed.\n\nKind regards,\nPurgejig bot"):
+            
+            subject = "Purgejig bot has a good message for you!"
+            bodyText = ("Dear Purgejig user,\n\n;"
+                        "The purge you initiated has successfully completed.; Please attend to this ASAP.;\n\n"
+                        "Kind regards,\nPurgejig bot")
+            if self.mail.sendMailAttachment(subject, bodyText):
                 with self.i2cLock:
                     self.display.lcd_display_string("Purge has completed.",1)
                     self.display.lcd_display_string("Please restart to",2)
@@ -1376,8 +1806,8 @@ class purge(object):
             kwargs=dict(queue=mpqueue))
         
         task3Process = multiCore.Process(
-            target=self.runrun.machineRun,
-            args=(state,),
+            target=self.runrun.batMon,
+            args=(),
             kwargs=dict(queue=mpqueue))
 
         try:
@@ -1401,10 +1831,16 @@ class purge(object):
                         os.execl(sys.executable, sys.executable, *sys.argv)
                     else:
                         # with self.i2cLock:
-                        self.runrun.display.lcd_clear()
-                        self.runrun.display.lcd_display_string("Restarting device,", 1)
-                        self.runrun.display.lcd_display_string("Please be patient.", 2)
-                        os.system("sudo reboot now -h")
+                        if self.runrun.checkMains():
+                            self.runrun.display.lcd_clear()
+                            self.runrun.display.lcd_display_string("Restarting device,", 1)
+                            self.runrun.display.lcd_display_string("Please be patient.", 2)
+                            os.system("sudo reboot now -h")
+                        else:
+                            self.runrun.display.lcd_clear()
+                            self.runrun.display.lcd_display_string("Shutting down device", 1)
+                            self.runrun.display.lcd_display_string("Goodbye!", 2)
+                            os.system("sudo shutdown now -h")
                 elif stopFlag:
                     task1Process.terminate()
                     task2Process.terminate()
@@ -1451,7 +1887,7 @@ class purge(object):
 
             task1and2Results = mpqueue.get()
 
-        except (overPressureException, pins.emergencyStopException, timeOutError, sensorErrorException, vacuumException, ChildProcessError) as e:
+        except (overPressureException, pins.emergencyStopException, timeOutError, sensorErrorException, vacuumException, ChildProcessError, batteryError) as e:
             print(e)
             beepbeepPeriod = 0.5 # seconds
             resetFlag = self.sharedBools[2]
@@ -1473,17 +1909,24 @@ class purge(object):
                 
                 time.sleep(beepbeepPeriod*2)
             self.runrun.purgeLog.logger('debug', 'Reset button has been pressed')
-            time.sleep(0.5)
+            time.sleep(1)
             if GPIO.input(self.runrun.nResetButton):
                 self.runrun.display.lcd_clear()
                 self.runrun.display.lcd_display_string("Reset pressed", 1)
                 os.execl(sys.executable, sys.executable, *sys.argv)
             else:
-                time.sleep(1)
-                self.runrun.display.lcd_clear()
-                self.runrun.display.lcd_display_string("Restarting device,", 1)
-                self.runrun.display.lcd_display_string("Please be patient.", 2)
-                os.system("sudo reboot now -h")
+                # 
+                # time.sleep(1)
+                if self.runrun.checkMains():
+                    self.runrun.display.lcd_clear()
+                    self.runrun.display.lcd_display_string("Restarting device,", 1)
+                    self.runrun.display.lcd_display_string("Please be patient.", 2)
+                    os.system("sudo reboot now -h")
+                else:
+                    self.runrun.display.lcd_clear()
+                    self.runrun.display.lcd_display_string("Shutting down device", 1)
+                    self.runrun.display.lcd_display_string("Goodbye!", 2)
+                    os.system("sudo shutdown now -h")
             # self.removeCallBacks()
         finally:
             if task1Process.is_alive() or task2Process.is_alive():

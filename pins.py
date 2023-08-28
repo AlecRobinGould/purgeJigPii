@@ -26,9 +26,9 @@ class Error(Exception):
     """Base class for exceptions in this module."""
     pass
 
-class emergencyStopException(Exception):
+class emergencyStopException(Error):
     """
-    Class for error exception
+    Class for stop of program error exception
     """
     def __init__(self, message='Exit raised though a stop flag'):
         # Call the base class constructor with the parameters it needs

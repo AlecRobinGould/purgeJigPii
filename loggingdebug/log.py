@@ -52,12 +52,11 @@ class log():
 
     def checkLogFile(self):
         fileName = self.logpath + self.logfile
-        with open(fileName, "r") as file:
-            try:
-                x = file.readline(1)
-                file.close()
-            except OSError:
-                return False
+        try:
+            file = open(fileName, "r")
+            file.close()
+        except:
+            return False            
         return True
 
     def readState(self):
