@@ -27,7 +27,7 @@ class safety(object):
             with self.sharedBools.get_lock():
                 startFlag = self.sharedBools[0]
             time.sleep(0.2)
-        print("startFlag pressed")
+        # print("startFlag pressed")
 
         with self.spinlock:
             supplyPressure = self.monitor.pressureConversion(self.monitor.readVoltage(3), "0-34bar")

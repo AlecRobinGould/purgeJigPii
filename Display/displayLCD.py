@@ -144,13 +144,16 @@ class lcd:
       self.lcd_write(LCD_ENTRYMODESET | LCD_ENTRYLEFT)
       sleep(0.2)
 
-
    # clocks EN to latch command
    def lcd_strobe(self, data):
       self.lcd_device.write_cmd(data | En | LCD_BACKLIGHT)
-      sleep(.0005)
+      # sleep(.0005)
+      # sleep(.0008)
+      sleep(.001)
       self.lcd_device.write_cmd(((data & ~En) | LCD_BACKLIGHT))
-      sleep(.0001)
+      # sleep(.0001)
+      sleep(.0002)
+      # sleep(.00012)
 
    def lcd_write_four_bits(self, data):
       self.lcd_device.write_cmd(data | LCD_BACKLIGHT)
@@ -169,6 +172,7 @@ class lcd:
   
    # put string function with optional char positioning
    def lcd_display_string(self, string, line=1, pos=0):
+    pos_new = pos
     if line == 1:
       pos_new = pos
     elif line == 2:

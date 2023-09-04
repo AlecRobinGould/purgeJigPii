@@ -110,6 +110,7 @@ class logicPins(object):
         self.stopFlag = False
         self.resetFlag = False
         self.errorFlag = False
+        self.overPressureFlag = False
         # self.i2cBusLock = i2cLock
         
         self.sharedBoolFlags = sharedBoolFlags
@@ -118,6 +119,8 @@ class logicPins(object):
         # SharedBoolFlags[1] is stopFlag
         # SharedBoolFlags[2] is resetFlag
         # SharedBoolFlags[3] is errorFlag
+        # sharedBoolFlags[4] is shutdownFlag
+        # sharedBoolFlags[5] is overPressureFlag
 
         # self.setCallbacks()
         # NOTE: These are created in a seperate threads and the callbacks should be treated as such
@@ -168,12 +171,14 @@ class logicPins(object):
         GPIO.remove_event_detect(self.nStopButton)
         GPIO.remove_event_detect(self.nResetButton)
         self.pinDebug.logger('debug', 'All button detects added again')
+    def __idleBeep(self):
+        GPIO.output(self.enBuzzer, 0)
 
     def __idle(self):
         """
         Internal method for setting an idle mode
         """
-        print("idle")
+        # print("idle")
         GPIO.output(self.fillValve, 0)
         GPIO.output(self.ventValve1, 0)
         GPIO.output(self.vacValve, 0)
@@ -191,17 +196,53 @@ class logicPins(object):
         # Increment the number of cycles to be performed
         time.sleep(0.2)
 # Add to shared mem
-        with self.shared.get_lock():
-            if GPIO.input(self.nCycleButton):
-                self.shared[4] += 1
+        
+        if GPIO.input(self.nCycleButton):
+            with self.shared.get_lock():
+                if self.shared[4] >= 99:
+                    self.shared[4] = 99
+                else:
+                    self.shared[4] += 1
                 self.pinDebug.logger('debug', 'cycle count incremented to: %d'%self.shared[4])
-            else:
-                if self.shared[4] >= 1:
+            time.sleep(0.3)
+            speedInc = 0
+            while GPIO.input(self.nCycleButton) == 0:
+                if speedInc <= 0.5:
+                    time.sleep(0.8 - speedInc)
+                else:
+                    time.sleep(0.1)
+                speedInc += 0.1 
+                with self.shared.get_lock():
+                    if self.shared[4] >= 99:
+                        self.shared[4] = 99
+                    else:
+                        self.shared[4] += 1
+                        self.pinDebug.logger('debug', 'cycle count incremented to: %d'%self.shared[4])
+                                       
+        else:
+            with self.shared.get_lock():
+                if self.shared[4] > 1:
                     self.shared[4] -= 1
                     self.pinDebug.logger('debug', 'cycle count decremented to: %d'%self.shared[4])
                 else:
+                    self.shared[4] = 1
                     self.pinDebug.logger('debug', 'cycle count cannot be decremented further than: %d'%self.shared[4])
-            
+            time.sleep(0.3)
+            speedDec = 0
+            while GPIO.input(self.nCycleButton) == 0:
+                if speedDec <= 0.5:
+                    time.sleep(0.8 - speedDec)
+                else:
+                    time.sleep(0.1)
+                speedDec += 0.1
+                with self.shared.get_lock():
+                    if self.shared[4] > 1:
+                        self.shared[4] -= 1
+                        self.pinDebug.logger('debug', 'cycle count decremented to: %d'%self.shared[4])
+                    else:
+                        self.shared[4] = 1
+                        self.pinDebug.logger('debug', 'cycle count cannot be decremented further than: %d'%self.shared[4])
+                
         
     def __startCallback(self, channel):
         """Internal method for starting purge"""
@@ -236,63 +277,98 @@ class logicPins(object):
         return 
 
     def __stopCallback(self, channel):
-        self.__stopRemoveCallbacks()
-        self.__idle()
+        with self.sharedBoolFlags.get_lock():
+                self.startFlag = self.sharedBoolFlags[0]
+                self.errorFlag = self.sharedBoolFlags[3]
+                self.sharedBoolFlags[4] = False
+        if self.startFlag:                 
+            if self.errorFlag:
+                if self.stopFlag:
+                    self.stopFlag = False
+                    self.sharedBoolFlags[1] = False
+                else:
+                    self.stopFlag = True
+                    self.sharedBoolFlags[1] = True
+                self.__idleBeep()
+            else:
+                self.__stopRemoveCallbacks()
+                self.__idle()
 
-        # with self.sharedBoolFlags.get_lock():
-        #     self.pinDebug.logger('debug', 'Stop button pressed, Stopflag = %d'%self.sharedBoolFlags[1])
-        #     if self.sharedBoolFlags[1]:
-        #         self.sharedBoolFlags[1] = 0
-        #     else:
-        #         self.sharedBoolFlags[1] = 1
-        #         self.sharedBoolFlags[0] = 0
+            # with self.sharedBoolFlags.get_lock():
+            #     self.pinDebug.logger('debug', 'Stop button pressed, Stopflag = %d'%self.sharedBoolFlags[1])
+            #     if self.sharedBoolFlags[1]:
+            #         self.sharedBoolFlags[1] = 0
+            #     else:
+            #         self.sharedBoolFlags[1] = 1
+            #         self.sharedBoolFlags[0] = 0
 
-        
-        self.pinDebug.logger('debug', 'Stop button pressed, Stopflag = %d'%self.stopFlag)
-        if self.stopFlag:
-            self.stopFlag = False
-
-            with self.sharedBoolFlags.get_lock():
-                self.sharedBoolFlags[1] = False
-        else:
-            self.stopFlag = True
-            self.startFlag = False
-
-            with self.sharedBoolFlags.get_lock():
-                self.sharedBoolFlags[0] = False
-                self.sharedBoolFlags[1] = True
-            # time.sleep(0.3)
             
-        raise emergencyStopException()
-        # return True
+                self.pinDebug.logger('debug', 'Stop button pressed, Stopflag = %d'%self.stopFlag)
+                if self.stopFlag:
+                    self.stopFlag = False
+                    with self.sharedBoolFlags.get_lock():
+                        self.sharedBoolFlags[1] = False
+                else:
+                    self.stopFlag = True
+                    self.startFlag = False
+                    with self.sharedBoolFlags.get_lock():
+                        self.sharedBoolFlags[0] = False
+                        self.sharedBoolFlags[1] = True
+                    # time.sleep(0.3)
+                    
+                raise emergencyStopException()
+        else:
+            with self.sharedBoolFlags.get_lock():
+                self.sharedBoolFlags[4] = False
+            if self.errorFlag:
+                self.__idleBeep()
+            else:
+                # Ignore
+                pass
+            time.sleep(2)
+            if GPIO.input(self.nStopButton) == 0:
+                with self.sharedBoolFlags.get_lock():
+                    self.sharedBoolFlags[4] = True
+
         
     def __resetCallback(self, channel):
-        self.__resetRemoveCallbacks()
-        self.__idle()
-        # with self.sharedBoolFlags.get_lock():
-        #     self.sharedBoolFlags[2] = True
-        #     self.sharedBoolFlags[1] = True
-        
-        self.resetFlag = True
-        self.stopFlag = True
-        with self.sharedBoolFlags.get_lock():
-                self.sharedBoolFlags[1] = True
-                self.sharedBoolFlags[2] = True
-        time.sleep(0.3)
-        # self.display.backlight(0)
+        try:
+            with self.sharedBoolFlags.get_lock():
+                self.overPressureFlag = self.sharedBoolFlags[5]
+            # print("reset pressed with shared obtain")
+        except:
+            self.overPressureFlag = self.sharedBoolFlags[5]
+            # print("reset pressed without shared obtain")
+        if self.overPressureFlag:
+            # print("reset pressed, ovp flag true")
+            pass
+        else:
+            # print("reset pressed, ovp flag false")
+            self.__resetRemoveCallbacks()
+            self.__idle()
+            # with self.sharedBoolFlags.get_lock():
+            #     self.sharedBoolFlags[2] = True
+            #     self.sharedBoolFlags[1] = True
+            self.resetFlag = True
+            # self.stopFlag = True
+            with self.sharedBoolFlags.get_lock():
+                    # self.sharedBoolFlags[1] = True
+                    self.sharedBoolFlags[2] = True
+            # time.sleep(0.3)
+            # self.display.backlight(0)
 
-        # with self.sharedBoolFlags.get_lock():
-        #     self.pinDebug.logger('debug', 'Reset button pressed, Resetflag = %d'%self.sharedBoolFlags[2])
-        self.pinDebug.logger('debug', 'Reset button pressed, Resetflag = %d'%self.resetFlag)
+            # with self.sharedBoolFlags.get_lock():
+            #     self.pinDebug.logger('debug', 'Reset button pressed, Resetflag = %d'%self.sharedBoolFlags[2])
+            self.pinDebug.logger('debug', 'Reset button pressed, Resetflag = %d'%self.resetFlag)
     
-        # time.sleep(1)
-        # time.sleep(0.5)
-        # if GPIO.input(self.nResetButton):
-        #     self.__idle()
-        #     # os.execl(sys.executable, sys.executable, *sys.argv)
-        # else:
-            
-        #     # os.system("sudo reboot now -h")
+            # time.sleep(1)
+            # time.sleep(0.5)
+            # if GPIO.input(self.nResetButton):
+            #     self.__idle()
+            #     # os.execl(sys.executable, sys.executable, *sys.argv)
+            # else:
+                
+            #     # os.system("sudo reboot now -h")
 
     def batteryStateSet(self, batteryEnable = 1, chargeEnable = 1):
         """

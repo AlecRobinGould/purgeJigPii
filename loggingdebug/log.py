@@ -51,6 +51,7 @@ class log():
             logging.warning('Logger has been used out of condition')
 
     def checkLogFile(self):
+        
         fileName = self.logpath + self.logfile
         try:
             file = open(fileName, "r")

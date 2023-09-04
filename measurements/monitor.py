@@ -82,13 +82,16 @@ class measure(object):
             try:
                 self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=bits, bus=1)
             except:
-                self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x68, rate=bits, bus=1)
+                try:
+                    self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x68, rate=bits, bus=1)
+                except:
+                    self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6D, rate=bits, bus=1)
             # print("ADC I2C adress no valid")
 
         # Setting additional adc parameters
         self.adc.set_pga(1)
         self.adc.set_conversion_mode(0)
-        self.adc.set_bit_rate(16)
+        # self.adc.set_bit_rate(bits)
 
         
     
@@ -101,6 +104,7 @@ class measure(object):
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Leaving a note here to check if charging should be disabled first before checking battery percentage
 # ====================================================================================================
+        
         if voltage > self.SOCLookUp[0]:
             return self.SOCLookUp[1]
         elif voltage < self.SOCLookUp[12]:
@@ -161,7 +165,8 @@ class measure(object):
 
         # stat1MonValue = 0
         # stat2MonValue = 0
-
+        # return 'Fault'
+        # return 'Major fault'
         if stat1MonValue:
             if stat2MonValue:
                 # self.logthis.logger('debug', 'Battery is charged')
