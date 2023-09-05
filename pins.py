@@ -58,7 +58,7 @@ class logicPins(object):
         self.disp = displayLCD.lcd()
 
         # Constants... python does not like real constants (im not creating constants.py) - pls dont change this
-        self.deBounce = 100   # time in milliseconds
+        self.deBounce = 200   # time in milliseconds
         # Pin numbers
         self.fillValve = 23
         self.ventValve1 = 24
@@ -112,6 +112,7 @@ class logicPins(object):
         self.errorFlag = False
         self.overPressureFlag = False
         # self.i2cBusLock = i2cLock
+        self.doublePressFix = False
         
         self.sharedBoolFlags = sharedBoolFlags
         self.i2cBusLock = i2cLock
@@ -202,47 +203,59 @@ class logicPins(object):
                 if self.shared[4] >= 99:
                     self.shared[4] = 99
                 else:
-                    self.shared[4] += 1
-                self.pinDebug.logger('debug', 'cycle count incremented to: %d'%self.shared[4])
-            time.sleep(0.3)
+                    if self.doublePressFix:
+                        self.doublePressFix = False
+                    else:
+                        self.shared[4] += 1
+            
+            time.sleep(0.8)
             speedInc = 0
             while GPIO.input(self.nCycleButton) == 0:
-                if speedInc <= 0.5:
-                    time.sleep(0.8 - speedInc)
-                else:
-                    time.sleep(0.1)
-                speedInc += 0.1 
+                self.doublePressFix = True
                 with self.shared.get_lock():
                     if self.shared[4] >= 99:
                         self.shared[4] = 99
                     else:
-                        self.shared[4] += 1
-                        self.pinDebug.logger('debug', 'cycle count incremented to: %d'%self.shared[4])
+                        if GPIO.input(self.nCycleButton) == 0:
+                            self.shared[4] += 1
+
+                if speedInc <= 0.3:
+                    time.sleep(0.5 - speedInc)
+                elif speedInc > 0.3 and speedInc < 0.5:
+                    time.sleep(0.15)
+                else:
+                    time.sleep(0.1)
+                speedInc += 0.1 
+
+            with self.shared.get_lock():
+                self.pinDebug.logger('debug', 'cycle count incremented to: %d'%self.shared[4])
                                        
         else:
             with self.shared.get_lock():
                 if self.shared[4] > 1:
                     self.shared[4] -= 1
-                    self.pinDebug.logger('debug', 'cycle count decremented to: %d'%self.shared[4])
                 else:
                     self.shared[4] = 1
-                    self.pinDebug.logger('debug', 'cycle count cannot be decremented further than: %d'%self.shared[4])
-            time.sleep(0.3)
+                    # self.pinDebug.logger('debug', 'cycle count cannot be decremented further than: %d'%self.shared[4])
+            time.sleep(0.8)
             speedDec = 0
             while GPIO.input(self.nCycleButton) == 0:
-                if speedDec <= 0.5:
-                    time.sleep(0.8 - speedDec)
-                else:
-                    time.sleep(0.1)
-                speedDec += 0.1
                 with self.shared.get_lock():
                     if self.shared[4] > 1:
                         self.shared[4] -= 1
-                        self.pinDebug.logger('debug', 'cycle count decremented to: %d'%self.shared[4])
                     else:
                         self.shared[4] = 1
-                        self.pinDebug.logger('debug', 'cycle count cannot be decremented further than: %d'%self.shared[4])
-                
+
+                if speedDec <= 0.3:
+                    time.sleep(0.5 - speedDec)
+                elif speedDec > 0.3 and speedDec < 0.5:
+                    time.sleep(0.15)
+                else:
+                    time.sleep(0.1)
+                speedDec += 0.1
+                        # self.pinDebug.logger('debug', 'cycle count cannot be decremented further than: %d'%self.shared[4])
+            with self.shared.get_lock():
+                self.pinDebug.logger('debug', 'cycle count decremented to: %d'%self.shared[4])
         
     def __startCallback(self, channel):
         """Internal method for starting purge"""

@@ -104,7 +104,7 @@ class measure(object):
 # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 # Leaving a note here to check if charging should be disabled first before checking battery percentage
 # ====================================================================================================
-        
+        # return 30
         if voltage > self.SOCLookUp[0]:
             return self.SOCLookUp[1]
         elif voltage < self.SOCLookUp[12]:
