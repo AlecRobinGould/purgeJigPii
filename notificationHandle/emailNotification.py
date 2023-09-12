@@ -106,24 +106,3 @@ class emailNotification(object):
         self.logmsg = "Email sent successfully"
         self.mailDebug.logger('debug', self.logmsg)
         return True
-
-def main():
-    # cc_emails = ["someone@gmail.com"]
-    # bcc_emails = ["anonymous@circe.org"]
-
-    # subject = "Purgejig bot has a bad message for you!"
-    # bodyText = ("Dear Purgejig user,\n\n;"
-    #             "Error 11;Battery monitoring major fault triggered;Attempting to continue... See logs FMI.;\n\n"
-    #             "Kind regards,\nPurgejig bot")
-    
-    subject = "Purgejig bot has a good message for you!"
-    bodyText = ("Dear Purgejig user,\n\n;"
-                "Error 13 is now resolved!;Please press start on the purge jig to continue purging.;\n\n"
-                "Kind regards,\nPurgejig bot")        
-    # send_email_with_attachment(subject, bodyText, emails,
-    #                            cc_emails, bcc_emails, path)
-    test = emailNotification()
-    test.sendMailAttachment(subject, bodyText)
-
-if __name__ == "__main__":
-    main()

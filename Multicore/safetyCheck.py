@@ -44,17 +44,6 @@ class safety(object):
             print("errorflag true")
             self.sharedBools[3] = True # errorFlag?
 
-
-        # while supplyPressure > 23:
-        #     with spinlock:
-        #         supplyPressure = monitor.pressureConversion(monitor.readVoltage(3), "0-34bar")
-        #     with sharedValues.get_lock():
-        #         sharedValues[0] = supplyPressure
-
-        # with sharedValues.get_lock():
-        # #     for x in range(len(shared)):
-        #     sharedBools[3] = False # errorFlag?
-
         """This kills the other tasks in the main process.
         Dont forget that exceptions terminate all locks
         """

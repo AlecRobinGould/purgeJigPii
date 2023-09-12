@@ -9,6 +9,7 @@ __pycache__/
 .Python
 env/
 build/
+.vscode/
 develop-eggs/
 dist/
 downloads/
@@ -34,6 +35,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Unit test / coverage reports
+Testing/
 htmlcov/
 .tox/
 .coverage

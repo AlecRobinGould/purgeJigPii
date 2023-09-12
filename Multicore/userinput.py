@@ -35,13 +35,13 @@ class remoteUserInput(object):
             while True:
                 i += 1
 
-                # with self.sharedBools.get_lock():
-                #     remoteStartFlag = self.sharedBools[0]
-                #     remoteStopFlag = self.sharedBools[1]
-                #     remoteResetFlag = self.sharedBools[2]
-                #     remoteShutdownFlag = self.sharedBools[4]
-                #     remoteRebootFlag = self.sharedBools[6]
-                #     errorcheck = self.sharedBools[3]
+                with self.sharedBools.get_lock():
+                    remoteStartFlag = self.sharedBools[0]
+                    remoteStopFlag = self.sharedBools[1]
+                    remoteResetFlag = self.sharedBools[2]
+                    remoteShutdownFlag = self.sharedBools[4]
+                    remoteRebootFlag = self.sharedBools[6]
+                    errorcheck = self.sharedBools[3]
                 
                 if self.__isData():
                     c = sys.stdin.read(1)

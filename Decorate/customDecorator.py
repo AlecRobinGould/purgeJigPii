@@ -64,13 +64,3 @@ class customDecorators(object):
                 return result
             return inner
         return outer
-"""
-    # Usage example as a countdown timer
-    @exitAfter(3)
-    def countdown(n):
-        print('countdown started', flush=True)
-        for i in range(n, -1, -1):
-            print(i, end=', ', flush=True)
-            sleep(1)
-        print('countdown finished')
-"""

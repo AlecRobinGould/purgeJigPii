@@ -34,21 +34,3 @@ class healthyPi(object):
             netFlag = False
 
         return {"Memory":memFlag, "Disk":diskFlag, "Network":netFlag}
-    
-
-
-def main():
-    try:
-        x = healthyPi()
-        y = x.checkPi()
-        print(y["Memory"])
-        print(y["Disk"])
-        print(y["Network"])
-
-    except KeyboardInterrupt:
-        print("\nExited measurements through keyboard interupt")
-
-
-
-if __name__ == "__main__":
-    main()

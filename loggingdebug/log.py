@@ -81,20 +81,3 @@ class log():
                 lastLine = ''
                 self.logger('debug', 'Last state cannot be recovered')
         return lastLine
-
-# def main():
-#     '''
-#     Main program function
-#     '''
-#     DEBUG = log()
-#     if DEBUG.readState() != "":
-#         print("Something")
-#     else:
-#         print("Nothing")
-#     DEBUG.logger('debug', 'This is a test')
-#     DEBUG.logger('warning', 'This is a warning')
-#     DEBUG.logger('info', 'This is info')
-#     DEBUG.logger('error', 'This is an error')
-
-# if __name__ == "__main__":
-#     main()
