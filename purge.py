@@ -22,6 +22,7 @@ from Display import displayLCD
 from Decorate import customDecorator
 from measurements import monitor, checkHealth
 from Multicore import multiCore, safetyCheck, lowSupplyCheck, batMon, userinput
+# from Testing import inputTest as userinput
 
 try:
     from notificationHandle import emailNotification as notify
@@ -223,17 +224,17 @@ class purgeModes(pins.logicPins):
     def checkMains(self):
         batteryVoltageCharge = 0
         batteryVoltageNoCharge = 0
-        if self.i2cLock.acquire(timeout=0.05):
+        if self.i2cLock.acquire(timeout=0.005):
             sampleavg = 15
             self.i2cLock.release()
         else:
-            sampleavg = 5
+            sampleavg = 4
         # This disables charging to the device
         self.batteryStateSet(batteryEnable = 1, chargeEnable=1)
 
         for i in range(sampleavg):
             
-            if self.i2cLock.acquire(timeout=0.01):
+            if self.i2cLock.acquire(timeout=0.005):
                 batteryVoltageNoCharge += self.measure.readVoltage(self.constant.BATTERYVOLTCHANNEL)
                 self.i2cLock.release()
             else:
@@ -244,7 +245,7 @@ class purgeModes(pins.logicPins):
         self.batteryStateSet(batteryEnable = 1, chargeEnable=0)
         for i in range(sampleavg):
             
-            if self.i2cLock.acquire(timeout=0.01):
+            if self.i2cLock.acquire(timeout=0.005):
                 batteryVoltageCharge += self.measure.readVoltage(self.constant.BATTERYVOLTCHANNEL)
                 self.i2cLock.release()
             else:
@@ -2037,7 +2038,7 @@ class purgeModes(pins.logicPins):
 
 
 class purge(object):
-    def __init__(self, noOfCycles, state, standardIn):
+    def __init__(self, noOfCycles, state, std):
         # Get number of cycles and pass it to parent. Other option is to press cycle
         # button to increment before the purge process begins
         self.measure = monitor.measure(8, 1)
@@ -2052,7 +2053,7 @@ class purge(object):
         self.task1 = safetyCheck.safety(self.measure, self.i2cLock, self.sharedBools, self.sharedValues)
         self.task3 = lowSupplyCheck.lowSupply(self.measure, self.runrun.mail, self.i2cLock, self.sharedBools, self.sharedValues)
         self.task4 = batMon.batteryMonitoring(self.measure, self.runrun.mail, self.i2cLock, self.sharedBools, self.sharedValues)
-        self.task5 = userinput.remoteUserInput(self.sharedBools, standardIn)
+        self.task5 = userinput.remoteUserInput(self.sharedBools, std)
         
     def runPurge(self):
         """
@@ -2064,44 +2065,33 @@ class purge(object):
         # Shared resources
         mpqueue = Queue()
         # Check battery and satefy check
-        
-
-        task1Process = multiCore.Process(
-            target=self.task1.safetyCheck,
-            args=(),
-            kwargs=dict(queue=mpqueue))
-
         state = 1
-        task2Process = multiCore.Process(
-            target=self.runrun.machineRun,
-            args=(state,),
-            kwargs=dict(queue=mpqueue))
-        
-        task3Process = multiCore.Process(
-            target=self.task3.lowSuppCheck,
-            args=(),
-            kwargs=dict(queue=mpqueue))
-        
-        task4Process = multiCore.Process(
-            target=self.task4.batteryMonitor,
-            args=(),
-            kwargs=dict(queue=mpqueue))
-
-        task5Process = multiCore.Process(
-            target=self.task5.readTerm,
-            args=(),
-            kwargs=dict(queue=mpqueue))
+        tasks = [multiCore.Process(
+                target=self.task1.safetyCheck,
+                args=(),
+                kwargs=dict(queue=mpqueue))] + \
+                [multiCore.Process(
+                target=self.runrun.machineRun,
+                args=(state,),
+                kwargs=dict(queue=mpqueue))] + \
+                [multiCore.Process(
+                target=self.task3.lowSuppCheck,
+                args=(),
+                kwargs=dict(queue=mpqueue))] + \
+                [multiCore.Process(
+                target=self.task4.batteryMonitor,
+                args=(),
+                kwargs=dict(queue=mpqueue))] + \
+                [multiCore.Process(
+                target=self.task5.readTerm,
+                args=(),
+                kwargs=dict(queue=mpqueue))]
 
         try:
-            task1Process.start()
-            task2Process.start()
-            task3Process.start()
-            task4Process.start()
-            task5Process.start()
-            
 
-            while task1Process.is_alive() or task2Process.is_alive() or task3Process.is_alive() or task4Process.is_alive() or task5Process.is_alive():
-                # print("alive")
+            [taskprocesses.start() for taskprocesses in tasks]
+
+            while tasks[0].is_alive() or tasks[1].is_alive() or tasks[2].is_alive() or tasks[3].is_alive() or tasks[4].is_alive():
                 with self.sharedBools.get_lock():
                     stopFlag = self.sharedBools[1]
                     resetFlag = self.sharedBools[2]
@@ -2115,43 +2105,23 @@ class purge(object):
                     if stopFlag:
                         with self.i2cLock:
                             self.runrun.display.lcd_clear()
-                        if task1Process.is_alive():
-                            task1Process.terminate()
-                        if task2Process.is_alive():
-                            task2Process.terminate()
-                        if task3Process.is_alive():
-                            task3Process.terminate()
-                        if task4Process.is_alive():
-                            task4Process.terminate()
-                        if task5Process.is_alive():
-                            task5Process.terminate()
-                        while task1Process.is_alive() or task2Process.is_alive() or task3Process.is_alive() or task4Process.is_alive() or task5Process.is_alive():
+                        
+                        [taskprocesses.terminate() for taskprocesses in tasks]
+
+                        while tasks[0].is_alive() or tasks[1].is_alive() or tasks[2].is_alive() or tasks[3].is_alive() or tasks[4].is_alive():
                             pass
-                        # time.sleep(1)
-                        # self.runrun.display.lcd_clear()
-                        # time.sleep(0.1)
+
                         self.runrun.display.lcd_display_string("Emergency stop!", 2, 2)
                         self.runrun.display.lcd_display_string("Press RESET", 3, 4)
-                        # time.sleep(0.3)
                         raise pins.emergencyStopException
                     
                 if (resetFlag or rebootFlag) and self.runrun.overPressureFlag == False:
-                    # time.sleep(0.2)
-                    # if GPIO.input(self.runrun.nResetButton):
                     with self.i2cLock:
                         self.runrun.display.lcd_clear()
-                    
-                    if task1Process.is_alive():
-                        task1Process.terminate()
-                    if task2Process.is_alive():
-                        task2Process.terminate()
-                    if task3Process.is_alive():
-                        task3Process.terminate()
-                    if task4Process.is_alive():
-                        task4Process.terminate()
-                    if task5Process.is_alive():
-                        task5Process.terminate()
-                    while task1Process.is_alive() or task2Process.is_alive() or task3Process.is_alive() or task4Process.is_alive() or task5Process.is_alive():
+
+                    [taskprocesses.terminate() for taskprocesses in tasks]
+
+                    while tasks[0].is_alive() or tasks[1].is_alive() or tasks[2].is_alive() or tasks[3].is_alive() or tasks[4].is_alive():
                         pass
                         
                     raise pins.emergencyStopException
@@ -2159,59 +2129,38 @@ class purge(object):
                 elif shutdownFlag and self.runrun.overPressureFlag == False:
                     with self.i2cLock:
                         self.runrun.display.lcd_clear()
-                    if task1Process.is_alive():
-                        task1Process.terminate()
-                    if task2Process.is_alive():
-                        task2Process.terminate()
-                    if task3Process.is_alive():
-                        task3Process.terminate()
-                    if task4Process.is_alive():
-                        task4Process.terminate()
-                    if task5Process.is_alive():
-                        task5Process.terminate()
-                    while task1Process.is_alive() or task2Process.is_alive() or task3Process.is_alive() or task4Process.is_alive()  or task5Process.is_alive():
+                    
+                    [taskprocesses.terminate() for taskprocesses in tasks]
+                    while tasks[0].is_alive() or tasks[1].is_alive() or tasks[2].is_alive() or tasks[3].is_alive() or tasks[4].is_alive():
                         pass
                     raise pins.emergencyStopException
-                
+                t1 = tasks[0]
+                if t1.exception:
+                    error, task1Traceback = t1.exception
 
-                if task1Process.exception:
-                    error, task1Traceback = task1Process.exception
-
-                    #_______________________________ Do something here to correct it_____________________________________________________________________
-
-                    # raise ChildProcessError(task1Traceback)
                     with self.sharedBools.get_lock():
                         overPError = self.sharedBools[3]
-
                     
                     # Do not wait until task_2 is finished
-                    task2Process.terminate()
-                    task3Process.terminate()
-                    task4Process.terminate()
-                    task5Process.terminate()
+                    [taskprocesses.terminate() for taskprocesses in tasks]
+
                     if overPError:
                         self.runrun.eVentHandle()
 
                     raise overPressureException
                     # raise ChildProcessError(task1Traceback)
                     
+                t2 = tasks[1]
+                if t2.exception:
+                    error, task2Traceback = t2.exception
 
-                if task2Process.exception:
-                    error, task2Traceback = task2Process.exception
-
-                    # Do not wait until task_1 is finished
-                    task1Process.terminate()
-                    task3Process.terminate()
-                    task4Process.terminate()
-                    task5Process.terminate()
+                    [taskprocesses.terminate() for taskprocesses in tasks]
 
                     raise error
                     # raise ChildProcessError(task2Traceback)
 
             # task1Process.join()
             # task2Process.join()
-                        
-
             task1and2Results = mpqueue.get()
 
         except (overPressureException, pins.emergencyStopException, timeOutError, sensorErrorException, vacuumException, ChildProcessError, batteryError) as e:
@@ -2246,15 +2195,15 @@ class purge(object):
                     if GPIO.input(self.runrun.nStopButton):
                         pass
                     else:
-                        time.sleep(0.5)
+                        time.sleep(0.3)
                         if GPIO.input(self.runrun.nStopButton):
                             pass
                         else:
-                            time.sleep(0.5)
+                            time.sleep(0.3)
                             if GPIO.input(self.runrun.nStopButton):
                                 pass
                             else:
-                                time.sleep(0.5)
+                                time.sleep(0.3)
                                 if GPIO.input(self.runrun.nStopButton) == 0:
                                     shutdownFlag = True
                     
@@ -2277,14 +2226,11 @@ class purge(object):
                 shutDownText2 = "GOODBYE!"
                 self.runrun.display.lcd_display_string(shutDownText1, 2, self.runrun.centreText(shutDownText1))
                 self.runrun.display.lcd_display_string(shutDownText2, 3, self.runrun.centreText(shutDownText2))
-                time.sleep(2)
+                time.sleep(1)
                 shutDownText3 = "SHUTDOWN SUCCESS!"
-                shutDownText4 = "POWER CYCLE,"
-                shutDownText5 = "TO REBOOT."
                 self.runrun.display.lcd_clear()
-                self.runrun.display.lcd_display_string(shutDownText3, 1, self.runrun.centreText(shutDownText3))
-                self.runrun.display.lcd_display_string(shutDownText4, 2, self.runrun.centreText(shutDownText4))
-                self.runrun.display.lcd_display_string(shutDownText5, 3, self.runrun.centreText(shutDownText5)) 
+                self.runrun.display.lcd_display_string(shutDownText3, 2, self.runrun.centreText(shutDownText3))
+                time.sleep(1)
                 os.system("sudo shutdown now -h")
             elif GPIO.input(self.runrun.nResetButton) and rebootFlag == False:
                 self.runrun.purgeLog.logger('debug', 'Reset button has been pressed')
@@ -2300,7 +2246,7 @@ class purge(object):
                 # 
                 # time.sleep(1)
                 if self.runrun.checkMains():
-                    self.runrun.display.lcd_clear()
+                    # self.runrun.display.lcd_clear()
                     restarttext1 = "RESTARTING"
                     restarttext2 = "DEVICE"
                     self.runrun.display.lcd_display_string(restarttext1, 2, self.runrun.centreText(restarttext1))
@@ -2314,22 +2260,13 @@ class purge(object):
                     shutDownText2 = "GOODBYE!"
                     self.runrun.display.lcd_display_string(shutDownText1, 2, self.runrun.centreText(shutDownText1))
                     self.runrun.display.lcd_display_string(shutDownText2, 3, self.runrun.centreText(shutDownText2))
-                    time.sleep(2)
+                    time.sleep(1)
                     shutDownText3 = "SHUTDOWN SUCCESS!"
-                    shutDownText4 = "POWER CYCLE,"
-                    shutDownText5 = "TO REBOOT."
                     self.runrun.display.lcd_clear()
-                    self.runrun.display.lcd_display_string(shutDownText3, 1, self.runrun.centreText(shutDownText3))
-                    self.runrun.display.lcd_display_string(shutDownText4, 2, self.runrun.centreText(shutDownText4))
-                    self.runrun.display.lcd_display_string(shutDownText5, 3, self.runrun.centreText(shutDownText5))
+                    self.runrun.display.lcd_display_string(shutDownText3, 2, self.runrun.centreText(shutDownText3))
+                    time.sleep(1)
                     os.system("sudo shutdown now -h")
             
-            # self.removeCallBacks()
         finally:
-            if task1Process.is_alive() or task2Process.is_alive() or task3Process.is_alive or task4Process.is_alive():
-                task1Process.terminate()
-                task2Process.terminate()
-                task3Process.terminate()
-                task4Process.terminate()
             del self.sharedValues
             del self.sharedBools

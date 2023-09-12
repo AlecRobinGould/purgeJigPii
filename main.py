@@ -17,7 +17,8 @@ def main():
     '''
     Main program function
     '''
-    test = purge.purge(5,'idle', sys.stdin)
+    f = sys.stdin
+    test = purge.purge(5,'idle', f)
     try:
         test.runPurge()
         time.sleep(1)

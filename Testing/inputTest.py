@@ -6,21 +6,21 @@ import time
 from multiprocessing import Array, Queue
 
 class remoteUserInput(object):
-    def __init__(self, sharedBools, std):
+    def __init__(self, sharedBools, stdInFileNo, stdIn):
         self.sharedBools = sharedBools
-        self.std = std
-        
+        self.stdInFileNo = stdInFileNo
+        self.stdIn = stdIn
+
     def __isData(self):
-        return select.select([self.std ], [], [], 0) == ([self.std ], [], [])
+        return select.select([self.stdIn], [], [], 0) == ([self.stdIn], [], [])
     
     def readTerm(self, queue):
-        sys.stdin = os.fdopen(self.std.fileno())
-        old_settings = termios.tcgetattr(sys.stdin)
+        old_settings = termios.tcgetattr(self.stdIn)
         print("Past old settings")
         try:
             print("try")
         
-            tty.setcbreak(sys.stdin.fileno())
+            tty.setcbreak(self.stdInFileNo)
             
             i = 0
             
@@ -44,7 +44,7 @@ class remoteUserInput(object):
                 #     errorcheck = self.sharedBools[3]
                 
                 if self.__isData():
-                    c = sys.stdin.read(1)
+                    c = self.stdIn.read(1)
                     v = v + c
                     if c == '\x1b':         # x1b is ESC
                         break
@@ -124,14 +124,15 @@ class remoteUserInput(object):
         except Exception as e:
             print(e)
         finally:
-            termios.tcsetattr(sys.stdin , termios.TCSADRAIN, old_settings)
+            termios.tcsetattr(self.stdIn, termios.TCSADRAIN, old_settings)
 
 def main():
 
     sharedTest = Array('b', [False, False, False, False, False, False, False])
-    mpqueue = Queue()   
-    x = sys.stdin
-    test = remoteUserInput(sharedTest, x)
+    mpqueue = Queue()
+    fn = sys.stdin.fileno()
+    f = sys.stdin
+    test = remoteUserInput(sharedTest, fn, f)
 
     test.readTerm(mpqueue)
 
