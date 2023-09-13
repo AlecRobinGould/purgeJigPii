@@ -57,7 +57,8 @@ class i2c_device:
 # Write a single command
    def write_cmd(self, cmd):
       self.bus.write_byte(self.addr, cmd)
-      sleep(0.00015)
+      # sleep(0.00015)
+      sleep(0.0002)
 
 # Write a command and argument
    def write_cmd_arg(self, cmd, data):
@@ -144,16 +145,14 @@ class lcd:
       self.lcd_write(LCD_ENTRYMODESET | LCD_ENTRYLEFT)
       sleep(0.2)
 
-   # clocks EN to latch command
+   #  clocks EN to latch command
    def lcd_strobe(self, data):
-      self.lcd_device.write_cmd(data | En | LCD_BACKLIGHT)
-      # sleep(.0005)
-      # sleep(.0008)
-      sleep(.001)
       self.lcd_device.write_cmd(((data & ~En) | LCD_BACKLIGHT))
-      sleep(.0001)
-      # sleep(.0002)
-      # sleep(.00012)
+      sleep(0.00005)
+      self.lcd_device.write_cmd(data | En | LCD_BACKLIGHT)
+      sleep(0.00005)
+      self.lcd_device.write_cmd(((data & ~En) | LCD_BACKLIGHT))
+      sleep(0.0001)
 
    def lcd_write_four_bits(self, data):
       self.lcd_device.write_cmd(data | LCD_BACKLIGHT)
@@ -172,20 +171,24 @@ class lcd:
   
    # put string function with optional char positioning
    def lcd_display_string(self, string, line=1, pos=0):
-    pos_new = pos
-    if line == 1:
       pos_new = pos
-    elif line == 2:
-      pos_new = 0x40 + pos
-    elif line == 3:
-      pos_new = 0x14 + pos
-    elif line == 4:
-      pos_new = 0x54 + pos
+      if line == 1:
+         pos_new = pos
+      elif line == 2:
+         pos_new = 0x40 + pos
+      elif line == 3:
+         pos_new = 0x14 + pos
+      elif line == 4:
+         pos_new = 0x54 + pos
+      try:
+         self.lcd_write(0x80 + pos_new)
 
-    self.lcd_write(0x80 + pos_new)
-
-    for char in string:
-      self.lcd_write(ord(char), Rs)
+         for char in string:
+           self.lcd_write(ord(char), Rs)
+      except Exception as e:
+         # Failed to write to display. Keep on trying, dont exit
+         # When main program is reset, the display will work as normal
+         pass
 
    # clear lcd and set to home
    def lcd_clear(self):
