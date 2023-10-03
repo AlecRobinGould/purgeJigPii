@@ -231,7 +231,10 @@ class ADCDifferentialPi(object):
         # if the conversion mode is set to one-shot update the ready bit to 1
         if self.__conversionmode == 0:
             config = config | (1 << 7)
-            self.__bus.write_byte(address, config)
+            try:
+                self.__bus.write_byte(address, config)
+            except Exception:
+                pass
             config = config & ~(1 << 7)  # reset the ready bit to 0
 
         # determine a reasonable amount of time to wait for the conversion
@@ -248,7 +251,10 @@ class ADCDifferentialPi(object):
 
         # keep reading the ADC data until the conversion result is ready
         while True:
-            __adcreading = self.__bus.read_i2c_block_data(address, config, 4)
+            try:
+                __adcreading = self.__bus.read_i2c_block_data(address, config, 4)
+            except Exception:
+                pass
             if self.__bitrate == 18:
                 high = __adcreading[0]
                 mid = __adcreading[1]

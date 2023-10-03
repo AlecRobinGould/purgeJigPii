@@ -1,7 +1,7 @@
 import time
 
 class lowSupply(object):
-    def __init__(self, monitor: object, notify: object, spinlock: object, sharedBools: bool, sharedValues: float):
+    def __init__(self, monitor: object, notify: object, spinlock: object, sharedBools: bool, sharedValues: float, stateValue: float):
         self.lowSupplyPressure = 16
         self.superLowSupplyPressure = 4
 
@@ -10,6 +10,7 @@ class lowSupply(object):
         self.spinlock = spinlock
         self.sharedBools = sharedBools
         self.sharedValues = sharedValues
+        self.stateValue = stateValue
 
 
     def lowSuppCheck(self, queue):
@@ -35,34 +36,38 @@ class lowSupply(object):
                     "Purge cannot continue til the last cycle then wait for the correct pressure. See logs FMI.;\n\n"
                     "Kind regards,\nPurgejig bot")
 
-        
         with self.sharedBools.get_lock():
             startFlag = self.sharedBools[0]
         while startFlag == False:
             with self.sharedBools.get_lock():
                 startFlag = self.sharedBools[0]
             time.sleep(0.2)
-
         while startFlag:
-
-            with self.spinlock:
-                supplyPressure = self.monitor.pressureConversion(self.monitor.readVoltage(3), "0-34bar")
-            with self.sharedValues.get_lock():
-                self.sharedValues[0] = supplyPressure
-            
-            if supplyPressure < self.lowSupplyPressure:
-                if supplyPressure < self.superLowSupplyPressure:
-                    if self.notify.sendMailAttachment(subject, bodyTexts):
-                        time.sleep(60)
+            with self.stateValue.get_lock():
+                state = self.stateValue[0]
+            if state == 2:
+                with self.spinlock:
+                    try:
+                        supplyPressure = self.monitor.pressureConversion(self.monitor.readVoltage(3), "0-34bar")
+                    except Exception as l:
+                        print(l)
+                with self.sharedValues.get_lock():
+                    self.sharedValues[0] = supplyPressure
+                if supplyPressure < self.lowSupplyPressure:
+                    if supplyPressure < self.superLowSupplyPressure:
+                        if self.notify.sendMailAttachment(subject, bodyTexts):
+                            time.sleep(60)
+                        else:
+                            pass
                     else:
-                        pass
+                        if self.notify.sendMailAttachment(subject, bodyText):
+                            time.sleep(5*60)
+                        else:
+                            pass
                 else:
-                    if self.notify.sendMailAttachment(subject, bodyText):
-                        time.sleep(5*60)
-                    else:
-                        pass
+                    pass
+                
+                with self.sharedBools.get_lock():
+                    startFlag = self.sharedBools[0]
             else:
-                pass
-            
-            with self.sharedBools.get_lock():
-                startFlag = self.sharedBools[0]
+                time.sleep(5)
