@@ -76,16 +76,16 @@ class measure(object):
         # Initialise the ADC with default values
         bits=16
         try:
-            self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=bits, bus=1)
+            self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=bits, bus=1, logObj = self.logthis)
         except:
             # Juuuuust incase
             try:
-                self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=bits, bus=1)
+                self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=bits, bus=1, logObj=self.logthis)
             except:
                 try:
-                    self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x68, rate=bits, bus=1)
+                    self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x68, rate=bits, bus=1, logObj=self.logthis)
                 except:
-                    self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6D, rate=bits, bus=1)
+                    self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6D, rate=bits, bus=1, logObj=self.logthis)
             # print("ADC I2C adress no valid")
 
         # Setting additional adc parameters

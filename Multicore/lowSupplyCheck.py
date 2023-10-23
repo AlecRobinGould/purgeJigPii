@@ -4,6 +4,7 @@ class lowSupply(object):
     def __init__(self, monitor: object, notify: object, spinlock: object, sharedBools: bool, sharedValues: float, stateValue: float):
         self.lowSupplyPressure = 16
         self.superLowSupplyPressure = 4
+        self.sensorOff = -2 # Power goes off - sensor measures -8.59 bar
 
         self.monitor = monitor
         self.notify = notify
@@ -23,7 +24,9 @@ class lowSupply(object):
         :param sharedBools: Since this is multicore, a common memory space is needed
         :type Array of bools:
         :param sharedValues: Since this is multicore, a common memory space is needed
-        :type Array of double: 
+        :type Array of double:
+        :param stateValue: A variable used to capture what state the device is in, and share it across resources
+        :type Array of double:
         """
 
         subject = "Purgejig bot has a bad message for you!"
@@ -53,7 +56,7 @@ class lowSupply(object):
                         print(l)
                 with self.sharedValues.get_lock():
                     self.sharedValues[0] = supplyPressure
-                if supplyPressure < self.lowSupplyPressure:
+                if (supplyPressure < self.lowSupplyPressure) and (supplyPressure > self.sensorOff):
                     if supplyPressure < self.superLowSupplyPressure:
                         if self.notify.sendMailAttachment(subject, bodyTexts):
                             time.sleep(60)

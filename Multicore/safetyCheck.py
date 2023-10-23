@@ -3,6 +3,7 @@ import time
 class safety(object):
     def __init__(self, monitor: object, spinlock: object, sharedBools: bool, sharedValues: float):
         self.unsafePressure = 22
+        self.sensorOff = -2 # sensor power off means sensor measures -8.59 bar
 
         self.monitor = monitor
         self.spinlock = spinlock
@@ -35,13 +36,20 @@ class safety(object):
             self.sharedValues[0] = supplyPressure
 
         while supplyPressure < self.unsafePressure:
-            with self.spinlock:
-                supplyPressure = self.monitor.pressureConversion(self.monitor.readVoltage(3), "0-34bar")
-            with self.sharedValues.get_lock():
-                self.sharedValues[0] = supplyPressure   
+            # Dont look at the try except for answers
+            try:
+                with self.spinlock:
+                    supplyPressure = self.monitor.pressureConversion(self.monitor.readVoltage(3), "0-34bar")
+                with self.sharedValues.get_lock():
+                    self.sharedValues[0] = supplyPressure
+            except Exception as v:
+                print(v)
+            
+            if supplyPressure < self.sensorOff:
+                time.sleep(5)
 
         with self.sharedValues.get_lock():
-            print("errorflag true")
+            # print("errorflag true")
             self.sharedBools[3] = True # errorFlag?
 
         """This kills the other tasks in the main process.

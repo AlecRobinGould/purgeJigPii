@@ -13,7 +13,7 @@ try:
     from smbus2 import SMBus
 except ImportError:
     try:
-        from smbus import SMBus
+        from smbus2 import SMBus
     except ImportError:
         raise ImportError("python-smbus or smbus2 not found")
 import re
@@ -158,7 +158,7 @@ class ADCDifferentialPi(object):
             return
 
     # init object with i2caddress, default is 0x68, 0x69 for ADCoPi board
-    def __init__(self, address=0x68, address2=0x69, rate=18, bus=None):
+    def __init__(self, address=0x68, address2=0x69, rate=18, bus=None, logObj=None):
         """
         Class constructor - Initialise the two ADC chips with their
         I2C addresses and bit rate.
@@ -178,6 +178,7 @@ class ADCDifferentialPi(object):
         self.__adc1_address = address
         # self.__adc2_address = address2
         self.set_bit_rate(rate)
+        self.logObj = logObj
 
     def read_voltage(self, channel):
         """
@@ -252,27 +253,27 @@ class ADCDifferentialPi(object):
         # keep reading the ADC data until the conversion result is ready
         while True:
             try:
-                __adcreading = self.__bus.read_i2c_block_data(address, config, 4)
+                self.__adcreading = self.__bus.read_i2c_block_data(address, config, 4)
             except Exception:
                 pass
             if self.__bitrate == 18:
-                high = __adcreading[0]
-                mid = __adcreading[1]
-                low = __adcreading[2]
-                cmdbyte = __adcreading[3]
+                high = self.__adcreading[0]
+                mid = self.__adcreading[1]
+                low = self.__adcreading[2]
+                cmdbyte = self.__adcreading[3]
             else:
-                high = __adcreading[0]
-                mid = __adcreading[1]
-                cmdbyte = __adcreading[2]
+                high = self.__adcreading[0]
+                mid = self.__adcreading[1]
+                cmdbyte = self.__adcreading[2]
             # check if bit 7 of the command byte is 0.
 
-        
             if(cmdbyte & (1 << 7)) == 0:
                 break
             # was time.time() > timeout_time:
             elif time.monotonic() > timeout_time:
                 msg = 'read_raw: channel %i conversion timed out' % channel
-                raise TimeoutError(msg)
+                self.logObj.logger('error', msg)
+                # raise TimeoutError(msg)
             else:
                 pass
                 # time.sleep(0.00001)  # sleep for 10 microseconds

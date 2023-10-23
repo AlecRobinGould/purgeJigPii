@@ -11,13 +11,15 @@ import os, sys
 import time
 from loggingdebug import log
 try: 
-    from Display import displayLCD
+    # from Display import displayLCD
+    from Display import oldToNewInterface
 except ImportError:
 #     print("Failed to import pins from python system path")
 #     try:
     import sys
     sys.path.append('.')
-    from Display import displayLCD
+    # from Display import displayLCD
+    from Display import oldToNewInterface
 #     except ImportError:
 #         raise ImportError(
 #             "Failed to import library from parent folder")
@@ -55,7 +57,8 @@ class logicPins(object):
         """
         # super().__init__()
         GPIO.setmode(GPIO.BCM)
-        self.disp = displayLCD.lcd()
+        # self.disp = displayLCD.lcd()
+        self.disp = oldToNewInterface.lcd()
 
         # Constants... python does not like real constants (im not creating constants.py) - pls dont change this
         self.deBounce = 200   # time in milliseconds

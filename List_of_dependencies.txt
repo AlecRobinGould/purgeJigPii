@@ -2,6 +2,7 @@
 # sudo apt install python3-pip
 # pip3 install -r List_of_dependencies.txt
 # sudo apt-get install screen
+# sudo timedatectl set-ntp True
 # change in /boot/config.txt dtparam=i2c_arm=on,i2c_arm_baudrate=400000 #100kHz seems to work.
 
 numpy>=1.8.0
@@ -10,3 +11,4 @@ smbus
 RPi.GPIO>=0.7.1
 multiprocess
 psutil
+sparkfun_qwiic_i2c

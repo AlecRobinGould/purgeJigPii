@@ -19,7 +19,8 @@ import threading
 
 import pins
 from loggingdebug import log
-from Display import displayLCD
+# from Display import displayLCD
+from Display import oldToNewInterface
 from Decorate import customDecorator
 from measurements import monitor, checkHealth
 from Multicore import multiCore, safetyCheck, lowSupplyCheck, batMon, userinput
@@ -162,7 +163,8 @@ class purgeModes(pins.logicPins):
             # Place to store sensor values - potentially...
         self.sharedValues = sharedValues
         # self.i2cLock = lock
-        self.display = displayLCD.lcd()
+        # self.display = displayLCD.lcd()
+        self.display = oldToNewInterface.lcd()
         self.mail = notify.emailNotification()
         self.purgeLog = log.log()
         # self.decorate = customDecorator.customDecorators(self.purgeLog)
@@ -275,7 +277,7 @@ class purgeModes(pins.logicPins):
                     "Kind regards,\nPurgejig bot")
         self.display.lcd_clear()
         self.display.lcd_display_string("Error 10",1, 6)
-        self.display.lcd_display_string("Supply overpressure!",2)
+        self.display.lcd_display_string("Supply overpressure!",2, 0)
         supplyPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.SUPPLYPRESSURECHANNEL), "0-34bar")
         self.display.lcd_display_string("P1={:5.2f} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 4)
         self.display.lcd_display_string("Lower supply!",4, 3)
@@ -788,9 +790,11 @@ class purgeModes(pins.logicPins):
         # self.purgeLog.logger('debug',"beep off")
         GPIO.output(self.enBuzzer, 0)
 
+
     def __beepOn(self):
         # self.purgeLog.logger('debug',"beep on")
         GPIO.output(self.enBuzzer, 1)
+        self.display.backlight(1)
     
     def toggleBeep(self, state):
         # Allows toggling beep outside of this class
@@ -798,6 +802,7 @@ class purgeModes(pins.logicPins):
             self.__beepOn()
         else:
             self.__beepOff()
+            self.display.backlight(0)
 
     def __emergencyVentClose(self):
         """
@@ -1349,7 +1354,7 @@ class purgeModes(pins.logicPins):
                         self.display.lcd_display_string("P1={:5.2f} bar ".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 4)
                         self.display.lcd_display_string("P2={:5.2f} bar".format(round(fillPressure,2)), self.constant.VENTPRESSURECHANNEL, 4)
 
-                    while (fillPressure <= self.constant.MAXLOWGAUGE) and (supplyPressure <= self.constant.LASTFILLPRESSURE):
+                    while (fillPressure <= self.constant.MAXLOWGAUGE) or (supplyPressure <= self.constant.LASTFILLPRESSURE):
                         with self.sharedValues.get_lock():
                             supplyPressure = self.sharedValues[0]
                         with self.i2cLock:
@@ -1404,7 +1409,7 @@ class purgeModes(pins.logicPins):
                         self.display.lcd_display_string("P1={:5.2f} bar".format(round(supplyPressure,2)), self.constant.SUPPLYPRESSURECHANNEL, 4)
                         self.display.lcd_display_string("P2={:5.2f} bar".format(round(fillPressure,2)), self.constant.VENTPRESSURECHANNEL, 4)
 
-                    while (fillPressure <= self.constant.MAXLOWGAUGE) and (supplyPressure <= self.constant.LASTFILLPRESSURE) and self.stopFlag == 0:
+                    while (fillPressure <= self.constant.MAXLOWGAUGE) or (supplyPressure <= self.constant.LASTFILLPRESSURE) and self.stopFlag == 0:
                         with self.sharedValues.get_lock():
                             supplyPressure = self.sharedValues[0]
                         with self.i2cLock:
@@ -2062,8 +2067,10 @@ class purge(object):
         self.measure = monitor.measure(8, 1)
         self.sharedBools = Array('b', [False, False, False, False, False, False, False]) # start, stop, reset, error, shutdown, over pressure flags
         self.sharedValues = Array('d', [0.0, 0.0, 0.0, 0.0, noOfCycles])    # pressure 1 - potentially stat 1 and 2 and bat voltage and cycleCount for 2,3,4,5
+
+        # State share is an array instead of a "value" because value gave issues with spinlock
         self.stateShare = Array('i', [0])
-        # self.i2cLock = BoundedSemaphore(value=1)
+        # self.i2cLock = BoundedSemaphore(value=1) # No need for semaphore anymore
         self.i2cLock = RLock()
 
         # self.i2cLock.acquire(block=)
@@ -2184,9 +2191,9 @@ class purge(object):
 
                     if overPError:
                         self.runrun.eVentHandle()
-
+                    self.runrun.purgeLog.logger('error','safetyCheck code gave exception!')
                     raise overPressureException
-                    print("T1 exception")
+                    # print("T1 exception")
                     # raise ChildProcessError(task1Traceback)
                     
                 t2 = tasks[1]
