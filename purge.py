@@ -15,8 +15,8 @@ from ctypes import c_wchar_p, c_char_p, c_char
 
 # Concurrency
 from multiprocessing import Process, current_process, RLock, Lock, BoundedSemaphore, Queue, Array, Value
+import subprocess
 import threading
-
 import pins
 from loggingdebug import log
 # from Display import displayLCD
@@ -61,11 +61,13 @@ class constantsNamespace():
         MINSUPPLYPRESSURE = 4
         PROOFPRESSURE = 24
         EMERGENCYVENTPRESSURE = 22
-
+        
         PREFILLPRESSURE = 16
         VENTPRESSURE = 0.2
         INITVACUUMPRESSURE = 1
-        VACUUMPRESSURE = 0.1
+        # Set this to 0.05 (5E-2 mbar)
+        # VACUUMPRESSURE = 0.1
+        VACUUMPRESSURE = 0.05
         FILLPRESSURE = 4
         LASTFILLPRESSURE = 16
         SAFETOVACUUM = 0.5
@@ -146,7 +148,7 @@ class batteryError(pins.Error):
 # This is the superclass!
 """Inheriting because... lazy. Composition over inheritance!!! Might fix this in future"""
 class purgeModes(pins.logicPins):
-    def __init__(self, measure, lock, sharedBools, sharedValues, state = 'idle'):
+    def __init__(self, measure, lock, sharedBools, sharedValues, state):
         """
         Class constructor - Initialise functionality for creating rules of purge
         :param noOfCycles: 
@@ -185,6 +187,7 @@ class purgeModes(pins.logicPins):
         self.preFilledFlag = True
         self.lastCycleFlag = False
         self.timeoutFlag = False
+        self.vacexception = False
         self.overPressureFlag = False
         # self..resetFlag = False
         
@@ -642,6 +645,26 @@ class purgeModes(pins.logicPins):
         with self.i2cLock:
             self.display.lcd_clear()
         return True
+
+    def waitTimeSync(self):
+        # Query the system to see if NTP has synchronized
+
+        #  WARNING: this is a blocking subprocess.
+
+        subprocessInstance = subprocess.Popen(['timedatectl'], stdout=subprocess.PIPE,
+                                            universal_newlines=True)
+        cmdOut, _error = subprocessInstance.communicate()
+
+        listOfParts = cmdOut.split('\n')
+        stringVal = listOfParts[4].strip() # if this bombs out, type "timedatectl" in the terminal as see from there.
+        listOfStrings = stringVal.split(":")
+        stringVal = listOfStrings[1].strip()
+
+        # Seems unintuitive... check how its used and will make sense.
+        if stringVal == "yes":
+            return False
+        else:
+            return True
     
     def checkHealth(self):
         system = checkHealth.healthyPi()
@@ -649,12 +672,23 @@ class purgeModes(pins.logicPins):
         with self.i2cLock:
             self.display.lcd_display_string("HEALTH CHECK",2,4)
         # time.sleep(0.75)
-        
+        timeSync = False
         # I put this first so the logs make sense if email fails
         time.sleep(1)
         # metrics["Network"] = False
         if metrics["Network"]:
             self.purgeLog.logger('debug', 'RPi network is goood.')
+            if self.waitTimeSync():
+                self.display.lcd_display_string("TIME SYNCING...",3, 2)
+                while self.waitTimeSync():
+                    time.sleep(0.5)
+                    self.purgeLog.logger('debug', 'waiting for timesync...')
+
+                self.purgeLog.logger('debug', 'Time has sunk!')
+                timeSync = True
+                self.display.lcd_display_string("               ",3, 2)
+            else:
+                self.purgeLog.logger('debug', 'Time is synced.')
         else:
             # no point in trying to email here... the network will be restored at some point on its own.
             self.purgeLog.logger('debug', 'RPi network is down!')
@@ -919,7 +953,9 @@ class purgeModes(pins.logicPins):
     @customDecorator.customDecorators.exitAfter('venttimeout')
     def __ventProcess(self):
         
-        self.state = "vent"
+        # self.state = "vent"
+        with self.state.get_lock():
+            self.state[0] = 1
         ventType = 'None'
         try:
             # Venting process
@@ -934,7 +970,7 @@ class purgeModes(pins.logicPins):
             elif (ventPressure >= self.constant.VENTPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
                 ventType = 'Pressurised'
             self.__vent()
-            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < -0.1:
+            while ventPressure >= self.constant.VENTPRESSURE or ventPressure < -0.05:
                 with self.i2cLock:
                     ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
                     self.display.lcd_display_string("{:5.2f}".format(round(ventPressure,2)), 3,7)
@@ -1019,7 +1055,9 @@ class purgeModes(pins.logicPins):
                 
     @customDecorator.customDecorators.exitAfter('initialvactimeout')
     def __initVacProcess(self):
-        self.state = "initvacuum"
+        # self.state = "initvacuum"
+        with self.state.get_lock():
+            self.state[0] = 3
         with self.i2cLock:
             ventPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
         if ventPressure > 0.5:
@@ -1113,7 +1151,10 @@ class purgeModes(pins.logicPins):
         return (p1-p2)/deltaTime
 
     def timerFunc(self, timer, initValues, userNotified = False):
-        if self.state == 'vacuum': # incase the is_alive time.cancel doesnt work
+        with self.state.get_lock():
+            sstate = self.state[0]
+
+        if sstate == 4: # incase the is_alive time.cancel doesnt work
             with self.i2cLock:
                 p2 = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
             deltaTime = time.monotonic() - initValues[0]
@@ -1155,7 +1196,9 @@ class purgeModes(pins.logicPins):
             
     @customDecorator.customDecorators.exitAfter('vacuumtimeout')
     def __vacProcess(self):
-        self.state = "vacuum"
+        # self.state = "vacuum"
+        with self.state.get_lock():
+            self.state[0] = 4
         try:
             # Vacuum process
             with self.i2cLock:
@@ -1203,7 +1246,9 @@ class purgeModes(pins.logicPins):
             
             # with self.i2cLock:
             #     vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
-            if (vacuumPressure >= self.constant.INITVACUUMPRESSURE) and self.stopFlag == 0 and self.resetFlag == 0:
+            with self.i2cLock:
+                fillPressure = self.measure.pressureConversion(self.measure.readVoltage(self.constant.VENTPRESSURECHANNEL), "0-10bar")
+            if (vacuumPressure >= self.constant.INITVACUUMPRESSURE) or (fillPressure < 1 and fillPressure > -1) and self.stopFlag == 0 and self.resetFlag == 0:
                 initValues = [time.monotonic(), vacuumPressure]
                 self.timer = threading.Timer(int(self.dPdtTime), self.timerFunc, args=(None, initValues, False))
                 self.timer.start()
@@ -1247,7 +1292,8 @@ class purgeModes(pins.logicPins):
                     self.sharedBoolFlags[3] = True
                 # self.errorFlag = True
                 self.__vacExit()
-                raise vacuumException()
+                self.vacexception = True
+                
 
         except KeyboardInterrupt:
             self.timeoutFlag = True
@@ -1281,6 +1327,9 @@ class purgeModes(pins.logicPins):
                         self.display.lcd_display_string("Error 21 & 16",1, 3)
                         self.display.lcd_display_string("Email failed!",3, 4)
                 raise timeOutError()
+
+            elif self.vacexception:
+                raise vacuumException()
             elif self.stopFlag:
                 pass
             elif self.errorFlag:
@@ -1294,7 +1343,9 @@ class purgeModes(pins.logicPins):
 
     @customDecorator.customDecorators.exitAfter('filltimeout')
     def __fillProcess(self):
-        self.state = "fill"
+        # self.state = "fill"
+        with self.state.get_lock():
+            self.state[0] = 2
         # Check if supply pressure is safe to apply
         try:
             self.__initiate()
@@ -2019,7 +2070,9 @@ class purgeModes(pins.logicPins):
         if self.stateChecks():
             self.purgeLog.logger('debug','Initial state checks pass')
             self.__stateMachine()
-            self.state = "idle"
+            # self.state = "idle"
+            with self.state.get_lock():
+                self.state[0] = 0
             self.startFlag = False
             with self.sharedBoolFlags.get_lock():
                 self.sharedBoolFlags[0] = self.startFlag
@@ -2075,7 +2128,7 @@ class purge(object):
 
         # self.i2cLock.acquire(block=)
 
-        self.runrun = purgeModes(self.measure, self.i2cLock, self.sharedBools, self.sharedValues, state)
+        self.runrun = purgeModes(self.measure, self.i2cLock, self.sharedBools, self.sharedValues, self.stateShare)
         self.task1 = safetyCheck.safety(self.measure, self.i2cLock, self.sharedBools, self.sharedValues)
         self.task3 = lowSupplyCheck.lowSupply(self.measure, self.runrun.mail, self.i2cLock, self.sharedBools, self.sharedValues, self.stateShare)
         self.task4 = batMon.batteryMonitoring(self.measure, self.runrun.mail, self.i2cLock, self.sharedBools, self.sharedValues)
@@ -2161,23 +2214,24 @@ class purge(object):
                         pass
                     raise pins.emergencyStopException
                 
-
-                if self.runrun.state == "idle":
-                    with self.stateShare.get_lock():
-                        self.stateShare[0] = 0
-                elif self.runrun.state == "vent":
-                    with self.stateShare.get_lock():
-                        self.stateShare[0] = 1
-                elif self.runrun.state == "fill":
-                    with self.stateShare.get_lock():
-                        self.stateShare[0] = 2
-                elif self.runrun.state == "initvacuum":
-                    with self.stateShare.get_lock():
-                        self.stateShare[0] = 3
-                else:
-                    with self.stateShare.get_lock():
-                        self.stateShare[0] = 4
-
+                
+                # with self.stateShare.get_lock():
+                #     print(self.stateShare[0])
+                # if self.runrun.state == "idle":
+                #     with self.stateShare.get_lock():
+                #         self.stateShare[0] = 0
+                # elif self.runrun.state == "vent":
+                #     with self.stateShare.get_lock():
+                #         self.stateShare[0] = 1
+                # elif self.runrun.state == "fill":
+                #     with self.stateShare.get_lock():
+                #         self.stateShare[0] = 2
+                # elif self.runrun.state == "initvacuum":
+                #     with self.stateShare.get_lock():
+                #         self.stateShare[0] = 3
+                # else:
+                #     with self.stateShare.get_lock():
+                #         self.stateShare[0] = 4
 
                 t1 = tasks[0]
                 if t1.exception:

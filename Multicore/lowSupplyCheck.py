@@ -48,12 +48,13 @@ class lowSupply(object):
         while startFlag:
             with self.stateValue.get_lock():
                 state = self.stateValue[0]
-            if state == 2:
-                with self.spinlock:
-                    try:
+            # print(state)
+            if state != 2:
+                try:
+                    with self.spinlock:
                         supplyPressure = self.monitor.pressureConversion(self.monitor.readVoltage(3), "0-34bar")
-                    except Exception as l:
-                        print(l)
+                except Exception as l:
+                    print(l)
                 with self.sharedValues.get_lock():
                     self.sharedValues[0] = supplyPressure
                 if (supplyPressure < self.lowSupplyPressure) and (supplyPressure > self.sensorOff):
@@ -68,9 +69,9 @@ class lowSupply(object):
                         else:
                             pass
                 else:
-                    pass
-                
-                with self.sharedBools.get_lock():
-                    startFlag = self.sharedBools[0]
+                    time.sleep(5)
             else:
                 time.sleep(5)
+            
+            with self.sharedBools.get_lock():
+                startFlag = self.sharedBools[0]

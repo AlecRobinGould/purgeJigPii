@@ -176,6 +176,8 @@ class ADCDifferentialPi(object):
 
         self.__bus = self.__get_smbus(bus)
         self.__adc1_address = address
+        __adcreading = bytearray([0, 0, 0, 0])
+        self.__adcreading = __adcreading
         # self.__adc2_address = address2
         self.set_bit_rate(rate)
         self.logObj = logObj
@@ -254,8 +256,15 @@ class ADCDifferentialPi(object):
         while True:
             try:
                 self.__adcreading = self.__bus.read_i2c_block_data(address, config, 4)
-            except Exception:
-                pass
+            except Exception as ex:
+                time.sleep(0.000005) # Sleep 5 micro second
+                try:
+                    # See if ignoring the problems helps?
+                    self.__adcreading = self.__bus.read_i2c_block_data(address, config, 4)
+                except Exception as ep:
+                    msge = 'ADC exception on I2C: {}.'.format(ep)
+                    self.logObj.logger('error', msge)
+
             if self.__bitrate == 18:
                 high = self.__adcreading[0]
                 mid = self.__adcreading[1]
@@ -273,10 +282,11 @@ class ADCDifferentialPi(object):
             elif time.monotonic() > timeout_time:
                 msg = 'read_raw: channel %i conversion timed out' % channel
                 self.logObj.logger('error', msg)
+                break
                 # raise TimeoutError(msg)
             else:
-                pass
-                # time.sleep(0.00001)  # sleep for 10 microseconds
+                # pass
+                time.sleep(0.00001)  # sleep for 10 microseconds
 
         self.__signbit = False
         raw = 0

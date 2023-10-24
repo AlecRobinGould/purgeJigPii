@@ -349,6 +349,9 @@ class QwiicSerlcd(object):
     # Uses a standard rgb byte triplit eg. (255, 0, 255)
     def setBacklight(self, r, g, b):
         """
+            NOTE: I found this method to have bugs. I have not
+            Bothered to fix it. Use setFastBacklight instead?
+            
             Set the brightness of each backlight (red, green, blue)
 
             :param red: The new red brightness value (0-255)

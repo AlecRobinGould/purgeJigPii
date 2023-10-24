@@ -11,7 +11,7 @@ class healthyPi(object):
 
         memFlag = ''
         diskFlag = ''
-        netFlag = ''
+        netFlag = 'False'
 
         if memoryUsage.percent <= 90:
             memFlag = True
@@ -28,9 +28,20 @@ class healthyPi(object):
                 if nic in networkConnection:
                     st = networkConnection[nic]
                     
-        if st.isup:
-            netFlag = True
-        else:
-            netFlag = False
+                    if st.isup:
+                        print(st.isup)
+                        print(st.speed)
+                        
+                        if st.speed > 0:
+                            print("This is the one")
+                            netFlag = True
+                        else:
+                            netFlag = False
+                        print("")
+                    
+        # if st.isup:
+        #     netFlag = True
+        # else:
+        #     netFlag = False
 
         return {"Memory":memFlag, "Disk":diskFlag, "Network":netFlag}
