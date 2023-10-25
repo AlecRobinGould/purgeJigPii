@@ -9,9 +9,9 @@ class healthyPi(object):
         diskUsage = psutil.disk_usage("/root")
         networkConnection = psutil.net_if_stats()
 
-        memFlag = ''
-        diskFlag = ''
-        netFlag = 'False'
+        memFlag = False
+        diskFlag = False
+        netFlag = False
 
         if memoryUsage.percent <= 90:
             memFlag = True
@@ -29,15 +29,10 @@ class healthyPi(object):
                     st = networkConnection[nic]
                     
                     if st.isup:
-                        print(st.isup)
-                        print(st.speed)
-                        
                         if st.speed > 0:
-                            print("This is the one")
                             netFlag = True
                         else:
                             netFlag = False
-                        print("")
                     
         # if st.isup:
         #     netFlag = True

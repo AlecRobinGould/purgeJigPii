@@ -90,19 +90,25 @@ class emailNotification(object):
 # Comment this to remove attachment
             attachment.add_header(*self.header)
             self.msg.attach(attachment)
-        except:
+        except Exception as excep:
             self.msg = "Error opening attachment file %s" % self.fileAtachment
             self.mailDebug.logger('error', self.msg)
+            ercode = "Exception in mail: {}".format(excep)
+            self.mailDebug.logger('error', ercode)
             return False
             # print(self.msg)
             # sys.exit(1)
 
         # emails = to_emails# + cc_emails
-
-        server = smtplib.SMTP(self.host)
-        server.starttls()
-        server.send_message(self.msg)
-        server.quit()
-        self.logmsg = "Email sent successfully"
-        self.mailDebug.logger('debug', self.logmsg)
-        return True
+        try:
+            server = smtplib.SMTP(self.host)
+            server.starttls()
+            server.send_message(self.msg)
+            server.quit()
+            self.logmsg = "Email sent successfully"
+            self.mailDebug.logger('debug', self.logmsg)
+            return True
+        except Exception as failmail:
+            self.logmsg = "Email failed: {}".format(failmail)
+            self.mailDebug.logger('debug', self.logmsg)
+            return False

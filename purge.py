@@ -134,6 +134,14 @@ class batteryError(pins.Error):
         # Call the base class constructor with the parameters it needs
         super(batteryError, self).__init__(message)
 
+class shutdownException(pins.Error):
+    """
+    Class for battery draining in idle
+    """
+    def __init__(self, message='Exception rasied through a device left in idle whilst battery drains.'):
+        # Call the base class constructor with the parameters it needs
+        super(shutdownException, self).__init__(message)
+
 # class timeOutError(pins.Error):
 #     """
 #     Class for over reset exception
@@ -1091,18 +1099,59 @@ class purgeModes(pins.logicPins):
                 self.__vacInit()
                 with self.i2cLock:
                     vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
-                while vacuumPressure >= self.constant.INITVACUUMPRESSURE:
-                    with self.i2cLock:
-                        vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
-                    with self.i2cLock:
-                        self.display.lcd_display_string("{:.2e}".format(vacuumPressure),3,4)
+                    self.display.lcd_display_string("{:.2e}".format(vacuumPressure),3,4)
 
+                # Check for 10 seconds
+                sleepTime = 0.2
+                totalTime = 15
+                initcount = 0
+                while initcount < (totalTime/sleepTime):
+                    with self.i2cLock:
+                        vacuumPressuredPdt = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
+                        self.display.lcd_display_string("{:.2e}".format(vacuumPressuredPdt),3,4)
+                    time.sleep(sleepTime)
+                    initcount += 1
+
+                if vacuumPressure >= vacuumPressuredPdt:
+                    while vacuumPressure >= self.constant.INITVACUUMPRESSURE:
+                        with self.i2cLock:
+                            vacuumPressure = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
+                        with self.i2cLock:
+                            self.display.lcd_display_string("{:.2e}".format(vacuumPressure),3,4)
+
+                        with self.sharedBoolFlags.get_lock():
+                            self.stopFlag = self.sharedBoolFlags[1]
+                        if self.stopFlag:
+                            self.purgeLog.logger('debug', 'Emergency stop flag. Exiting from initial vacuum.')
+                            break
+                            # raise pins.emergencyStopException()
+                else:
+                    self.purgeLog.logger('error', 'Vacuum pump not detected')
+                    with self.i2cLock:
+                        self.display.lcd_clear()
+                        self.display.lcd_display_string("Error 9",1, 6)
+                        self.display.lcd_display_string("Vacuum pump not",2, 2)
+                        self.display.lcd_display_string("detected",3, 6)
+                        self.display.lcd_display_string("Press RESET",4, 4)
+                    subject = "Purgejig bot has a bad message for you!"
+                    bodyText = ("Dear Purgejig user,\n\n;"
+                                "Error 9;Vacuum pump not detected;The vacuum stage failed due to no load, check if vacuum pump is connected and on, else check vac sensor. See logs FMI.;\n\n"
+                                "Kind regards,\nPurgejig bot")
+                    if self.mail.sendMailAttachment(subject, bodyText):
+                        with self.i2cLock:
+                            self.display.lcd_display_string("Error 9",1, 6)
+                    else:
+                        with self.i2cLock:
+                            self.display.lcd_clear()
+                            self.display.lcd_display_string("Error 9 & 16",1, 3)
+                            self.display.lcd_display_string("detected, Email fail",3)
+                    
                     with self.sharedBoolFlags.get_lock():
-                        self.stopFlag = self.sharedBoolFlags[1]
-                    if self.stopFlag:
-                        self.purgeLog.logger('debug', 'Emergency stop flag. Exiting from initial vacuum.')
-                        break
-                        # raise pins.emergencyStopException()
+                        self.sharedBoolFlags[3] = True
+                    # self.errorFlag = True
+                    self.__vacExit()
+                    self.vacexception = True
+
             except KeyboardInterrupt:
                 self.timeoutFlag = True
                 with self.sharedBoolFlags.get_lock():
@@ -1136,6 +1185,8 @@ class purgeModes(pins.logicPins):
                             self.display.lcd_display_string("Email failed",3, 4)
                     # self.errorFlag = True
                     raise timeOutError()
+                elif self.vacexception:
+                    raise vacuumException()
                 elif self.stopFlag:
                     pass
                 elif self.errorFlag:
@@ -1924,7 +1975,10 @@ class purgeModes(pins.logicPins):
                     bodyText = ("Dear Purgejig user,\n\n;"
                                 "Error 1 resolved!;Helium supply has since been detected, purge will carry on as normal.;\n\n"
                                 "Kind regards,\nPurgejig bot")
-                    self.mail.sendMailAttachment(subject, bodyText)
+                    try:
+                        self.mail.sendMailAttachment(subject, bodyText)
+                    except Exception:
+                        pass
                     
                     # if (supplyPressure > self.constant.MAXSUPPLYPRESSURE) and (supplyPressure < self.constant.PROOFPRESSURE):
                     #     self.__preFillCheck(supplyPressure, 'higher')
@@ -2067,6 +2121,9 @@ class purgeModes(pins.logicPins):
         self.__beepOff()
         self.checkBattery(1)
         self.checkHealth()
+        # self.state = "idle"
+        with self.state.get_lock():
+            self.state[0] = 0
         if self.stateChecks():
             self.purgeLog.logger('debug','Initial state checks pass')
             self.__stateMachine()
@@ -2084,18 +2141,27 @@ class purgeModes(pins.logicPins):
             bodyText = ("Dear Purgejig user,\n\n;"
                         "The purge you initiated has successfully completed.; Please attend to this ASAP.;\n\n"
                         "Kind regards,\nPurgejig bot")
-            if self.mail.sendMailAttachment(subject, bodyText):
-                with self.i2cLock:
-                    self.display.lcd_display_string("To start a new",2, 3)
-                    self.display.lcd_display_string("purge process,",3, 3)
-                    self.display.lcd_display_string("press RESET",4, 4)
-            else:
+            
+            try:
+                if self.mail.sendMailAttachment(subject, bodyText):
+                    with self.i2cLock:
+                        self.display.lcd_display_string("To start a new",2, 3)
+                        self.display.lcd_display_string("purge process,",3, 3)
+                        self.display.lcd_display_string("press RESET",4, 4)
+                else:
+                    with self.i2cLock:
+                        self.display.lcd_display_string("Error 16: Email fail",1)
+                        self.display.lcd_display_string("PURGING DONE.",2, 3)
+                        self.display.lcd_display_string("Press RESET to",3, 3)
+                        self.display.lcd_display_string("purge again.",4, 4)
+            except Exception as err:
+                self.purgeLog.logger('error','Purge done, but error "{}" crept in.'.format(err))
                 with self.i2cLock:
                     self.display.lcd_display_string("Error 16: Email fail",1)
                     self.display.lcd_display_string("PURGING DONE.",2, 3)
                     self.display.lcd_display_string("Press RESET to",3, 3)
                     self.display.lcd_display_string("purge again.",4, 4)
-
+                    
             while GPIO.input(self.nResetButton):
                 time.sleep(0.3)
             return True
@@ -2136,7 +2202,7 @@ class purge(object):
         
     def runPurge(self):
         """
-        Two seperate threads should run here.
+        4 seperate threads should run here.
         One involving battery health and safety check
         (low prio) and the other should handle purging (high prio)
         """      
@@ -2258,6 +2324,12 @@ class purge(object):
 
                     raise error
                     # raise ChildProcessError(task2Traceback)
+                t4 = tasks[3]
+                if t4.exception:
+                    error, task4Traceback = t4.exception
+                    [taskprocesses.terminate() for taskprocesses in tasks]
+
+                    raise shutdownException
 
             # task1Process.join()
             # task2Process.join()
@@ -2367,6 +2439,18 @@ class purge(object):
                     self.runrun.display.lcd_display_string(shutDownText3, 2, self.runrun.centreText(shutDownText3))
                     time.sleep(1)
                     os.system("sudo shutdown now -h")
+        except shutdownException as sde:
+            self.runrun.purgeLog.logger('error', 'Error: {}'.format(sde))
+            shutDownText1 = "SHUTTING DOWN DEVICE"
+            shutDownText2 = "GOODBYE!"
+            self.runrun.display.lcd_display_string(shutDownText1, 2, self.runrun.centreText(shutDownText1))
+            self.runrun.display.lcd_display_string(shutDownText2, 3, self.runrun.centreText(shutDownText2))
+            time.sleep(2)
+            shutDownText3 = "SHUTDOWN SUCCESS!"
+            self.runrun.display.lcd_clear()
+            self.runrun.display.lcd_display_string(shutDownText3, 2, self.runrun.centreText(shutDownText3))
+            time.sleep(2)
+            os.system("sudo shutdown now -h")
         except Exception as e:
             print(e)
             self.runrun.purgeLog.logger('error', 'Error: {}'.format(e))
