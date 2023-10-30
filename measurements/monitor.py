@@ -15,6 +15,7 @@ try:
     import time
     from loggingdebug import log
     from measurements import DifferentialADCPi
+    # from DifferentialADCPi import TimeoutError as TE
     # import pins
     # from Display import displayLCD
 except ImportError:
@@ -33,6 +34,8 @@ class measure(object):
          """
 
         # self.gpio = pins.logicPins()
+
+        self.TE = DifferentialADCPi.TimeoutError
 
         self.logthis = log.log()
 
@@ -75,17 +78,20 @@ class measure(object):
         ]
         # Initialise the ADC with default values
         bits=16
-        try:
-            self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=bits, bus=1, logObj = self.logthis)
-        except:
-            # Juuuuust incase
-            try:
-                self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=bits, bus=1, logObj=self.logthis)
-            except:
-                try:
-                    self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x68, rate=bits, bus=1, logObj=self.logthis)
-                except:
-                    self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6D, rate=bits, bus=1, logObj=self.logthis)
+        # try:
+        self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6E, rate=bits, bus=1, logObj = self.logthis)
+        # except:
+        #     # Juuuuust incase
+        #     try:
+        #         self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6F, rate=bits, bus=1, logObj=self.logthis)
+        #     except:
+        #         try:
+        #             self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x68, rate=bits, bus=1, logObj=self.logthis)
+        #         except:
+        #             self.adc = DifferentialADCPi.ADCDifferentialPi(address=0x6D, rate=bits, bus=1, logObj=self.logthis)
+        # except Exception as v:
+        #     raise TimeoutError
+
             # print("ADC I2C adress no valid")
 
         # Setting additional adc parameters

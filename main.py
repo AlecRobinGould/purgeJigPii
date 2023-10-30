@@ -1,6 +1,6 @@
 try:
     import purge
-    from purge import time, GPIO
+    from purge import time, GPIO, os
     import sys
     # import RPi.GPIO as GPIO
 except ImportError:
@@ -18,7 +18,26 @@ def main():
     Main program function
     '''
     f = sys.stdin
-    test = purge.purge(5,'idle', f)
+    test = None
+    try:
+        test = purge.purge(5,'idle', f)
+    except Exception as k:
+        print(k)
+        if k == '[Errno 110] Connection timed out':
+            os.system("sudo shutdown now -h")
+        else:
+            # test.runrun.purgeLog.logger('error', 'Error: {}'.format(e))
+            # shutDownText1 = "SHUTTING DOWN DEVICE"
+            # shutDownText2 = "GOODBYE!"
+            # test.runrun.display.lcd_display_string(shutDownText1, 2, test.runrun.centreText(shutDownText1))
+            # test.runrun.display.lcd_display_string(shutDownText2, 3, test.runrun.centreText(shutDownText2))
+            # time.sleep(2)
+            # shutDownText3 = "SHUTDOWN SUCCESS!"
+            # test.runrun.display.lcd_clear()
+            # test.runrun.display.lcd_display_string(shutDownText3, 2, test.runrun.centreText(shutDownText3))
+            # time.sleep(2)
+            os.system("sudo shutdown now -h")
+
     try:
         test.runPurge()
         time.sleep(1)

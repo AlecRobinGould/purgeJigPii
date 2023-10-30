@@ -1106,6 +1106,8 @@ class purgeModes(pins.logicPins):
                 totalTime = 15
                 initcount = 0
                 while initcount < (totalTime/sleepTime):
+                    if vacuumPressuredPdt < vacuumPressure:
+                        break
                     with self.i2cLock:
                         vacuumPressuredPdt = self.measure.vacuumConversion(self.measure.readVoltage(self.constant.VACUUMCHANNEL))
                         self.display.lcd_display_string("{:.2e}".format(vacuumPressuredPdt),3,4)
@@ -2183,7 +2185,10 @@ class purge(object):
     def __init__(self, noOfCycles, state, std):
         # Get number of cycles and pass it to parent. Other option is to press cycle
         # button to increment before the purge process begins
+        # try:
         self.measure = monitor.measure(8, 1)
+        # except TimeoutError:
+        #     raise TimeoutError("Handle ADC err")
         self.sharedBools = Array('b', [False, False, False, False, False, False, False]) # start, stop, reset, error, shutdown, over pressure flags
         self.sharedValues = Array('d', [0.0, 0.0, 0.0, 0.0, noOfCycles])    # pressure 1 - potentially stat 1 and 2 and bat voltage and cycleCount for 2,3,4,5
 
@@ -2451,9 +2456,18 @@ class purge(object):
             self.runrun.display.lcd_display_string(shutDownText3, 2, self.runrun.centreText(shutDownText3))
             time.sleep(2)
             os.system("sudo shutdown now -h")
-        except Exception as e:
-            print(e)
-            self.runrun.purgeLog.logger('error', 'Error: {}'.format(e))
+        # except self.runrun.measure.TE as e:
+        #     self.runrun.purgeLog.logger('error', 'Error: {}'.format(e))
+        #     shutDownText1 = "SHUTTING DOWN DEVICE"
+        #     shutDownText2 = "GOODBYE!"
+        #     self.runrun.display.lcd_display_string(shutDownText1, 2, self.runrun.centreText(shutDownText1))
+        #     self.runrun.display.lcd_display_string(shutDownText2, 3, self.runrun.centreText(shutDownText2))
+        #     time.sleep(2)
+        #     shutDownText3 = "SHUTDOWN SUCCESS!"
+        #     self.runrun.display.lcd_clear()
+        #     self.runrun.display.lcd_display_string(shutDownText3, 2, self.runrun.centreText(shutDownText3))
+        #     time.sleep(2)
+        #     os.system("sudo shutdown now -h")
         finally:
             del self.sharedValues
             del self.sharedBools

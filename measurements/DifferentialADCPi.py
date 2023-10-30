@@ -282,7 +282,8 @@ class ADCDifferentialPi(object):
             elif time.monotonic() > timeout_time:
                 msg = 'read_raw: channel %i conversion timed out' % channel
                 self.logObj.logger('error', msg)
-                break
+                raise TimeoutError(msg)
+                # break
                 # raise TimeoutError(msg)
             else:
                 # pass
@@ -347,8 +348,12 @@ class ADCDifferentialPi(object):
             self.__pga = 4.0
         else:
             raise ValueError('set_pga: gain out of range')
-
+        # try:
         self.__bus.write_byte(self.__adc1_address, self.__adc1_conf)
+        # except Exception as ty:
+        #     # print(ty)
+        #     raise TimeoutError
+        
         # self.__bus.write_byte(self.__adc2_address, self.__adc2_conf)
         return
 
@@ -390,8 +395,11 @@ class ADCDifferentialPi(object):
             self.__lsb = 0.0000078125
         else:
             raise ValueError('set_bit_rate: rate out of range')
-
+        # try:
         self.__bus.write_byte(self.__adc1_address, self.__adc1_conf)
+        # except Exception as te:
+        #     # print(te)
+        #     raise TimeoutError
         # self.__bus.write_byte(self.__adc2_address, self.__adc2_conf)
         return
 
